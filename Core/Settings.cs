@@ -1,4 +1,4 @@
-using System.IO;
+﻿using System.IO;
 using System.Text.Json;
 using Microsoft.Win32;
 
@@ -7,13 +7,13 @@ namespace OmniHub.Core;
 public static class AppInfo
 {
     public const string Name = "OmniHub";
-    public const string Version = "1.0.0";
+    public const string Version = "1.0.1";
     public const string UninstallKey = @"SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall\OmniHub";
 
     public static string DefaultInstallDir =>
         Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ProgramFiles), Name);
 
-    /// <summary>Carpeta de instalación registrada (o la de por defecto).</summary>
+    /// <summary>Carpeta de instalaciÃ³n registrada (o la de por defecto).</summary>
     public static string InstallDir
     {
         get
@@ -39,7 +39,7 @@ public static class AppInfo
 
     public static string ExePath => Environment.ProcessPath ?? "";
 
-    /// <summary>¿Se está ejecutando desde la carpeta instalada?</summary>
+    /// <summary>Â¿Se estÃ¡ ejecutando desde la carpeta instalada?</summary>
     public static bool RunningInstalled =>
         string.Equals(Path.GetDirectoryName(ExePath)?.TrimEnd('\\'), InstallDir.TrimEnd('\\'), StringComparison.OrdinalIgnoreCase);
 
@@ -58,7 +58,7 @@ public static class AppInfo
 
 public class LightingState
 {
-    public string Effect { get; set; } = "Estático";
+    public string Effect { get; set; } = "EstÃ¡tico";
     public string Color1 { get; set; } = "#00E5FF";
     public string Color2 { get; set; } = "#8C52FF";
     public double Speed { get; set; } = 50;
@@ -94,17 +94,17 @@ public class Settings
     // Estado actual
     public LightingState Lighting { get; set; } = new();
     public string FanPreset { get; set; } = "Auto (BIOS)";
-    public string FanSource { get; set; } = "Máximo CPU/GPU";
+    public string FanSource { get; set; } = "MÃ¡ximo CPU/GPU";
     public Dictionary<string, string> FanModes { get; set; } = new();   // sensor id -> modo
     public Dictionary<string, double> FanFixed { get; set; } = new();   // sensor id -> %
-    public double[] CustomCurve { get; set; } = { 25, 35, 55, 80, 100 }; // % a 30/45/60/75/90 °C
+    public double[] CustomCurve { get; set; } = { 25, 35, 55, 80, 100 }; // % a 30/45/60/75/90 Â°C
     public bool GpuZeroFan { get; set; }
     public double ZeroFanTemp { get; set; } = 50;
 
-    // Ratón
+    // RatÃ³n
     public int SniperDpi { get; set; } = 400;
     public List<int> DpiStages { get; set; } = new() { 800, 1600, 3200 };
-    public Dictionary<string, string> ButtonMap { get; set; } = new();  // botón -> acción
+    public Dictionary<string, string> ButtonMap { get; set; } = new();  // botÃ³n -> acciÃ³n
 
     // Audio
     public double[] Eq { get; set; } = new double[10];
@@ -116,11 +116,11 @@ public class Settings
     // Efectos / audio espacial (Equalizer APO)
     public string SpatialMode { get; set; } = "Desactivado";
     public double OutputGain { get; set; }      // dB
-    public double Bass { get; set; }            // dB (estantería 105 Hz)
-    public double Treble { get; set; }          // dB (estantería 8 kHz)
-    public double Width { get; set; } = 100;    // % anchura estéreo
+    public double Bass { get; set; }            // dB (estanterÃ­a 105 Hz)
+    public double Treble { get; set; }          // dB (estanterÃ­a 8 kHz)
+    public double Width { get; set; } = 100;    // % anchura estÃ©reo
     public double Crossfeed { get; set; }       // % escenario/cruce
-    public double Balance { get; set; }         // -100 izq … +100 der
+    public double Balance { get; set; }         // -100 izq â€¦ +100 der
     public string EqExtra { get; set; } = "";   // filtros avanzados con sintaxis de Equalizer APO
 
     // Integraciones
@@ -168,10 +168,10 @@ public class Settings
         if (Profiles.Count == 0)
         {
             Profiles.Add(new Profile { Name = "Gaming", FanPreset = "Rendimiento", EqPreset = "FPS (pasos)", Eq = Presets.Eq["FPS (pasos)"],
-                Lighting = new LightingState { Effect = "Arcoíris", Speed = 60 } });
+                Lighting = new LightingState { Effect = "ArcoÃ­ris", Speed = 60 } });
             Profiles.Add(new Profile { Name = "Silencio", FanPreset = "Silencioso", EqPreset = "Plano",
                 Lighting = new LightingState { Effect = "Respirar", Color1 = "#3050FF", Speed = 25, Brightness = 50 } });
-            Profiles.Add(new Profile { Name = "Música", FanPreset = "Equilibrado", EqPreset = "Música", Eq = Presets.Eq["Música"],
+            Profiles.Add(new Profile { Name = "MÃºsica", FanPreset = "Equilibrado", EqPreset = "MÃºsica", Eq = Presets.Eq["MÃºsica"],
                 Lighting = new LightingState { Effect = "Ciclo de color", Speed = 30 } });
             Profiles.Add(new Profile { Name = "Noche", FanPreset = "Silencioso", EqPreset = "Plano",
                 Lighting = new LightingState { Effect = "Apagado" } });
@@ -193,20 +193,20 @@ public static class Presets
         ["Plano"]        = new double[] { 0, 0, 0, 0, 0, 0, 0, 0, 0, 0 },
         ["FPS (pasos)"]  = new double[] { -4, -3, -2, -1, 0, 2, 4, 5, 3, 1 },
         ["Graves+"]      = new double[] { 6, 5, 4, 2, 0, 0, 0, 0, 0, 0 },
-        ["Música"]       = new double[] { 3, 2, 1, 0, -1, 0, 1, 2, 3, 3 },
+        ["MÃºsica"]       = new double[] { 3, 2, 1, 0, -1, 0, 1, 2, 3, 3 },
         ["Cine"]         = new double[] { 4, 3, 2, 0, 0, 1, 2, 2, 2, 1 },
         ["Voz / Podcast"]= new double[] { -3, -2, -1, 1, 3, 4, 4, 3, 1, 0 },
         ["Agudos+"]      = new double[] { 0, 0, 0, 0, 0, 1, 3, 4, 5, 4 },
-        ["V clásica"]    = new double[] { 5, 4, 2, 0, -2, -2, 0, 2, 4, 5 },
+        ["V clÃ¡sica"]    = new double[] { 5, 4, 2, 0, -2, -2, 0, 2, 4, 5 },
     };
 
-    // Curvas de ventilador: (temperatura °C, % velocidad)
+    // Curvas de ventilador: (temperatura Â°C, % velocidad)
     public static readonly Dictionary<string, (double t, double p)[]> FanCurves = new()
     {
         ["Silencioso"]  = new[] { (30.0, 20.0), (50, 30), (65, 45), (75, 65), (85, 100) },
         ["Equilibrado"] = new[] { (30.0, 30.0), (50, 40), (65, 60), (75, 80), (85, 100) },
         ["Rendimiento"] = new[] { (30.0, 45.0), (50, 60), (65, 80), (75, 100) },
-        ["Máximo"]      = new[] { (0.0, 100.0) },
+        ["MÃ¡ximo"]      = new[] { (0.0, 100.0) },
     };
 
     public static readonly double[] CustomTemps = { 30, 45, 60, 75, 90 };

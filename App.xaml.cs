@@ -46,11 +46,16 @@ public partial class App : Application
 
         if (args.Contains("--uninstall"))
         {
-            if (MessageBox.Show("¿Desinstalar OmniHub y sus accesos directos?\n(Los componentes como Equalizer APO o PawnIO se desinstalan aparte desde Windows.)",
-                    "Desinstalar OmniHub", MessageBoxButton.YesNo, MessageBoxImage.Question) == MessageBoxResult.Yes)
+            if (MessageBox.Show("¿Desinstalar OmniHub?", "Desinstalar OmniHub", MessageBoxButton.YesNo, MessageBoxImage.Question) == MessageBoxResult.Yes)
             {
-                Installer.Uninstall();
-                MessageBox.Show("OmniHub se ha desinstalado.", "OmniHub");
+                var modules = MessageBox.Show(
+                    "¿Quitar también los módulos de OmniHub (sensores, iluminación y audio)?\n\nSe eliminan en segundo plano. Recomendado salvo que los uses con otros programas.",
+                    "Desinstalar OmniHub", MessageBoxButton.YesNo, MessageBoxImage.Question) == MessageBoxResult.Yes;
+                var wipe = MessageBox.Show("¿Borrar también tus ajustes y perfiles?", "Desinstalar OmniHub",
+                    MessageBoxButton.YesNo, MessageBoxImage.Question) == MessageBoxResult.Yes;
+                Installer.Uninstall(modules);
+                if (wipe) try { System.IO.Directory.Delete(AppInfo.DataDir, true); } catch { }
+                MessageBox.Show(modules ? "OmniHub y sus módulos se han desinstalado. Reinicia el PC para terminar de quitar los drivers." : "OmniHub se ha desinstalado.", "OmniHub");
             }
             Shutdown();
             return;

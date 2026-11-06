@@ -46,7 +46,7 @@
                 <Button x:Name="UpdateBtn" Content="Actualizar" Padding="0,10" Margin="0,0,0,8" Click="Update_Click" Visibility="Collapsed"/>
                 <Button x:Name="StartBtn" Style="{StaticResource AccentButton}" Content="INICIAR" FontSize="16" Padding="0,14" Margin="0,0,0,10" Click="Start_Click" IsEnabled="False"/>
                 <DockPanel>
-                    <Button DockPanel.Dock="Right" Content="Instalar componentes" Margin="0" Click="Components_Click"/>
+                    <Button DockPanel.Dock="Right" Content="Instalar módulos" Margin="0" Click="Components_Click"/>
                     <CheckBox x:Name="Skip" Content="No mostrar el launcher" VerticalAlignment="Center"/>
                 </DockPanel>
             </StackPanel>

@@ -41,8 +41,9 @@ public sealed class RgbService : IDisposable
             Status = "Arrancando OpenRGB…";
             try
             {
-                Process.Start(new ProcessStartInfo(exe, "--server --startminimized")
-                { WorkingDirectory = Path.GetDirectoryName(exe)!, UseShellExecute = true, WindowStyle = ProcessWindowStyle.Minimized });
+                // Sin --gui el módulo corre sin ventana ni icono: solo el servidor local para OmniHub
+                Process.Start(new ProcessStartInfo(exe, "--server --server-host 127.0.0.1")
+                { WorkingDirectory = Path.GetDirectoryName(exe)!, UseShellExecute = false, CreateNoWindow = true, WindowStyle = ProcessWindowStyle.Hidden });
             }
             catch (Exception e) { Status = "No se pudo abrir OpenRGB: " + e.Message; return false; }
         }

@@ -50,11 +50,11 @@ public partial class LauncherWindow : Window
         Row("Permisos de administrador", admin, admin ? "OK" : "Necesarios para ventiladores");
 
         var pawn = Components.PawnIO.IsInstalled();
-        Row("Sensores y ventiladores", pawn, pawn ? "PawnIO listo" : "Falta PawnIO (solo GPU)");
+        Row("Sensores y ventiladores", pawn, pawn ? "Módulo listo" : "Falta el módulo (solo GPU)");
         var rgb = Components.FindOpenRgb();
-        Row("Iluminación RGB", rgb != null, rgb != null ? "OpenRGB listo" : "Falta OpenRGB");
+        Row("Iluminación RGB", rgb != null, rgb != null ? "Módulo listo" : "Falta el módulo");
         var eq = Components.EqualizerApo.IsInstalled();
-        Row("Ecualizador", eq, eq ? "Equalizer APO listo" : "Falta Equalizer APO");
+        Row("Ecualizador", eq, eq ? "Módulo listo" : "Falta el módulo");
 
         var mice = await Task.Run(() => { try { return HidppDevice.Discover(); } catch { return new List<HidppDevice>(); } });
         Row("Ratón", true, mice.Count > 0 ? mice[0].Name + " (avanzado)" : "Cualquier ratón (botones/sensibilidad)");

@@ -110,14 +110,14 @@ public partial class MainWindow
     // =====================================================================
     UIElement PageLights()
     {
-        var root = Stack(Header("Iluminación", "RGB de placa, RAM, gráfica, ventiladores y periféricos de cualquier marca (motor: OpenRGB)"));
+        var root = Stack(Header("Iluminación", "RGB de placa, RAM, gráfica, ventiladores y periféricos de cualquier marca "));
         if (Components.FindOpenRgb() == null)
-            root.Children.Add(Banner("OpenRGB no está instalado: es el motor que habla con el RGB de todas las marcas.", "Instalar", OpenComponents));
+            root.Children.Add(Banner("Falta el módulo de iluminación: es el que habla con el RGB de todas las marcas.", "Instalar", OpenComponents));
 
         var status = Txt("");
         _live.Add(() => status.Text = Hub.Rgb.Status);
         root.Children.Add(Card(H2("Conexión"), status, Row(
-            Btn("Reconectar", async () => { Toast("Conectando con OpenRGB…"); await Hub.Rgb.ConnectAsync(); Refresh(); }),
+            Btn("Reconectar", async () => { Toast("Conectando con el módulo de iluminación…"); await Hub.Rgb.ConnectAsync(); Refresh(); }),
             Btn("Volver a detectar dispositivos", () => { Hub.Rgb.Refresh(); Refresh(); })),
             Sub("Si una app del fabricante (MSI Center, G HUB, iCUE, Synapse…) está abierta puede pisar los colores. Puedes cerrarlas en Ajustes.", 12)));
 
@@ -135,7 +135,7 @@ public partial class MainWindow
                 ColorPicker("Color secundario (para «Ciclo de color»)", L.Color2, c => { L.Color2 = c; Hub.Rgb.Changed(); SaveSoon(); }))));
 
         var list = new StackPanel();
-        if (Hub.Rgb.Devices.Count == 0) list.Children.Add(Sub("No hay dispositivos todavía. Pulsa «Reconectar» cuando OpenRGB esté instalado."));
+        if (Hub.Rgb.Devices.Count == 0) list.Children.Add(Sub("No hay dispositivos todavía. Pulsa «Reconectar» cuando el módulo de iluminación esté instalado."));
         foreach (var d in Hub.Rgb.Devices)
         {
             var name = d.Name;
@@ -152,9 +152,9 @@ public partial class MainWindow
     // =====================================================================
     UIElement PageFans()
     {
-        var root = Stack(Header("Ventiladores", "Curvas automáticas para los ventiladores de la placa base y la gráfica (motor: LibreHardwareMonitor)"));
+        var root = Stack(Header("Ventiladores", "Curvas automáticas para los ventiladores de la placa base y la gráfica "));
         if (!Components.PawnIO.IsInstalled())
-            root.Children.Add(Banner("Falta PawnIO: sin él solo se ven la gráfica y algunos sensores. Con él, cualquier placa base.", "Instalar", OpenComponents));
+            root.Children.Add(Banner("Falta el módulo de sensores: sin él solo se ven la gráfica y algunos sensores. Con él, cualquier placa base.", "Instalar", OpenComponents));
 
         root.Children.Add(Cols(3,
             Stat("CPU", () => $"{Hub.Fans.CpuTemp:0} °C", "Accent"),
@@ -404,7 +404,7 @@ public partial class MainWindow
         else
         {
             root.Children.Add(Card(H2("DPI por hardware"),
-                Sub("No he encontrado un ratón con DPI ajustable por software estándar (Logitech HID++). Con cualquier otro ratón funcionan la sensibilidad, los botones y las luces vía OpenRGB; el DPI se cambia con su botón físico."),
+                Sub("No he encontrado un ratón con DPI ajustable por software estándar (Logitech HID++). Con cualquier otro ratón funcionan la sensibilidad, los botones y las luces; el DPI se cambia con su botón físico."),
                 Btn("Buscar de nuevo", () => { Hub.Mouse.Discover(); Refresh(); })));
         }
 
@@ -458,10 +458,24 @@ public partial class MainWindow
 
         if (!Hub.Audio.EqAvailable)
         {
-            root.Children.Add(Banner("Para el ecualizador, la corrección de tus auriculares y el audio espacial de OmniHub hace falta Equalizer APO (gratis). En su instalador marca tus auriculares.", "Instalar", OpenComponents));
+            root.Children.Add(Banner("Para el ecualizador, la corrección de tus auriculares y el audio espacial de OmniHub hace falta el módulo de audio (se instala en segundo plano).", "Instalar", OpenComponents));
             root.Children.Add(Card(H2("Audio espacial de Windows"), Sub("En la pestaña «Audio espacial» de tu dispositivo puedes activar Windows Sonic (gratis) o Dolby Atmos / DTS si los tienes."), winSpatial));
             return root;
         }
+
+        // ¿Está Equalizer APO enganchado al dispositivo que suena ahora?
+        var eqDevs = Components.EqApoDevices();
+        var defGuid = defOut?.ID.Split('.').LastOrDefault()?.Trim('{', '}') ?? "";
+        if (defOut != null && !eqDevs.Contains(defGuid))
+            root.Children.Add(Banner($"El ecualizador aún no está activo en «{defOut.FriendlyName}». Márcalo en la lista que se abre y reinicia el PC (solo hace falta una vez).", "Activar", async () =>
+            {
+                var sel = Components.EqApoDeviceSelector();
+                if (sel == null) { Toast("No encuentro el selector del módulo de audio"); return; }
+                try { var p = Process.Start(new ProcessStartInfo(sel) { UseShellExecute = true }); if (p != null) await p.WaitForExitAsync(); } catch { }
+                Refresh();
+            }));
+        else if (defOut != null)
+            root.Children.Add(Sub($"✓ Ecualizador activo en «{defOut.FriendlyName}»", 12));
 
         // ---- Corrección automática para tus auriculares (AutoEq) ----
         var aeStatus = Txt(St.AutoEqName != null ? "✓ Corrección activa: " + St.AutoEqName : string.IsNullOrEmpty(St.AutoEqFile) ? "Sin corrección" : "✓ Perfil importado: " + Path.GetFileName(St.AutoEqFile));
@@ -492,7 +506,7 @@ public partial class MainWindow
                 }, true),
                 Btn("Importar archivo…", () =>
                 {
-                    var dlg = new OpenFileDialog { Filter = "Perfil Equalizer APO (*.txt)|*.txt" };
+                    var dlg = new OpenFileDialog { Filter = "Perfil de ecualización (*.txt)|*.txt" };
                     if (dlg.ShowDialog() != true) return;
                     var dest = Path.Combine(AppInfo.DataDir, "autoeq_" + Path.GetFileName(dlg.FileName));
                     File.Copy(dlg.FileName, dest, true);
@@ -564,7 +578,7 @@ public partial class MainWindow
                     St.EqUserPresets[n] = (double[])St.Eq.Clone(); St.EqPreset = "★ " + n; St.Save(); Toast($"Preset «{n}» guardado"); Refresh();
                 })),
             bands,
-            Sub("La ganancia se compensa sola para que no sature. Se aplica a los dispositivos marcados en Equalizer APO.", 12)));
+            Sub("La ganancia se compensa sola para que no sature. Se aplica a los dispositivos donde está activo el módulo de audio.", 12)));
 
         // ---- Avanzado: filtros a mano ----
         var extra = new TextBox
@@ -573,16 +587,16 @@ public partial class MainWindow
             FontFamily = new FontFamily("Cascadia Mono, Consolas"), FontSize = 12, VerticalScrollBarVisibility = ScrollBarVisibility.Auto
         };
         root.Children.Add(Card(H2("Avanzado: filtros personalizados"),
-            Sub("Cualquier filtro con la sintaxis de Equalizer APO se añade al final. Ejemplos:", 12),
+            Sub("Cualquier filtro con sintaxis Equalizer APO/AutoEq se añade al final. Ejemplos:", 12),
             Sub("Filter: ON PK Fc 3000 Hz Gain -3 dB Q 2      ·      Filter: ON HP Fc 30 Hz      ·      Channel: L  /  Preamp: -2 dB", 12),
             extra,
             Row(Btn("Aplicar filtros", () => { St.EqExtra = extra.Text; ApplyEqSoon(); Toast("Filtros aplicados"); }, true),
-                Btn("Abrir el editor de Equalizer APO", () =>
+                Btn("Abrir el editor avanzado", () =>
                 {
                     var dir = Components.EqApoConfigDir();
                     var ed = dir == null ? null : Path.Combine(Path.GetDirectoryName(dir)!, "Editor.exe");
                     if (ed != null && File.Exists(ed)) Process.Start(new ProcessStartInfo(ed) { UseShellExecute = true });
-                    else Toast("No encuentro el editor de Equalizer APO");
+                    else Toast("No encuentro el editor avanzado");
                 }))));
         return root;
     }
@@ -756,8 +770,8 @@ public partial class MainWindow
                 Toggle("Cerrarlas automáticamente al abrir OmniHub", St.CloseVendorApps, v => { St.CloseVendorApps = v; SaveSoon(); }),
                 Btn("Cerrarlas ahora", () => { var n = VendorApps.CloseAll(); Toast($"{n} proceso(s) cerrados"); Refresh(); }),
                 Sub("Solo se cierran las ventanas/bandeja de esas apps, no se desinstalan. Sus servicios de Windows pueden seguir activos.", 12)),
-            Card(H2("Componentes y mantenimiento"),
-                Row(Btn("Componentes…", OpenComponents),
+            Card(H2("Módulos y mantenimiento"),
+                Row(Btn("Módulos…", OpenComponents),
                     Btn("Abrir carpeta de datos", () => SystemTools.OpenUrl(AppInfo.DataDir)),
                     Btn("Volver a escanear dispositivos", async () =>
                     {
@@ -783,6 +797,6 @@ public partial class MainWindow
                     }, true),
                     Btn("Abrir el repositorio", () => SystemTools.OpenUrl(Updater.RepoUrl)))),
             Card(H2("Acerca de"),
-                Sub("OmniHub une en una app el control de luces, ventiladores, ratón y audio de cualquier marca usando motores abiertos: OpenRGB (iluminación), LibreHardwareMonitor + PawnIO (sensores y ventiladores), Equalizer APO (ecualizador) y HID++ (ratones Logitech). No sustituye al firmware: si algo no aparece, es que ese dispositivo aún no es compatible con esos motores.")));
+                Sub("OmniHub une en una app el control de luces, ventiladores, ratón y audio de cualquier marca con sus módulos integrados, basados en proyectos abiertos (OpenRGB, LibreHardwareMonitor + PawnIO, Equalizer APO, AutoEq) y HID++ para ratones Logitech. Se instalan y se quitan junto con OmniHub. Si algo no aparece, ese dispositivo aún no es compatible.")));
     }
 }

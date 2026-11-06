@@ -96,9 +96,19 @@ public static class Installer
         log.Report("Instalación terminada.");
     }
 
-    public static void Uninstall()
+    public static void Uninstall(bool removeModules)
     {
         var dir = AppInfo.InstallDir;
+        foreach (var p in Process.GetProcessesByName("OmniHub"))
+            if (p.Id != Environment.ProcessId) try { p.Kill(); p.WaitForExit(3000); } catch { }
+        if (removeModules)
+        {
+            var log = new Progress<string>();
+            // Orden: iluminación (archivos), audio y sensores (drivers) — todo en silencio
+            foreach (var c in new[] { Components.OpenRGB, Components.EqualizerApo, Components.PawnIO })
+                if (c.IsInstalled())
+                    try { Task.Run(() => c.Uninstall(log)).Wait(TimeSpan.FromMinutes(3)); } catch { }
+        }
         SystemTools.SetStartup(false, "");
         foreach (var lnk in new[]
         {

@@ -14,7 +14,7 @@ public class ComponentsWindow : Window
 
     public ComponentsWindow()
     {
-        Title = "Componentes de OmniHub";
+        Title = "Módulos de OmniHub";
         Width = 620; Height = 560;
         WindowStartupLocation = WindowStartupLocation.CenterOwner;
         Background = (Brush)Application.Current.FindResource("Bg");
@@ -26,8 +26,8 @@ public class ComponentsWindow : Window
 
         var root = new DockPanel { Margin = new Thickness(24) };
         var head = new StackPanel();
-        head.Children.Add(new TextBlock { Text = "Componentes", Style = (Style)Application.Current.FindResource("H1") });
-        head.Children.Add(new TextBlock { Text = "Motores gratuitos que OmniHub usa. Se descargan de su web oficial.", Style = (Style)Application.Current.FindResource("Sub") });
+        head.Children.Add(new TextBlock { Text = "Módulos", Style = (Style)Application.Current.FindResource("H1") });
+        head.Children.Add(new TextBlock { Text = "Se instalan en segundo plano desde el repositorio de OmniHub y se quitan al desinstalarlo.", Style = (Style)Application.Current.FindResource("Sub") });
         DockPanel.SetDock(head, Dock.Top);
         root.Children.Add(head);
         DockPanel.SetDock(_list, Dock.Top);

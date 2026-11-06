@@ -16,6 +16,7 @@ public class Component
     public string Homepage = "";
     public Func<bool> IsInstalled = () => false;
     public Func<IProgress<string>, IProgress<double>, CancellationToken, Task> Install = (_, _, _) => Task.CompletedTask;
+    public Func<IProgress<string>, Task> Uninstall = _ => Task.CompletedTask;
 }
 
 public static class Components
@@ -30,68 +31,97 @@ public static class Components
         return h;
     }
 
+    /// <summary>Los módulos se descargan de la release "components" del propio repositorio de OmniHub.</summary>
+    static string Mirror(string file) => $"https://github.com/{Updater.Repo}/releases/download/components/{file}";
+
     public static readonly Component PawnIO = new()
     {
         Id = "pawnio",
-        Name = "PawnIO (driver de sensores)",
-        Purpose = "Leer temperaturas y controlar ventiladores de la placa base (cualquier marca). También lo usa OpenRGB para RGB de placa/RAM.",
+        Name = "Módulo de sensores",
+        Purpose = "Temperaturas y control de ventiladores de la placa base (cualquier marca), y RGB de placa y RAM.",
         Homepage = "https://pawnio.eu",
         IsInstalled = () => Registry.LocalMachine.OpenSubKey(@"SYSTEM\CurrentControlSet\Services\PawnIO") != null,
         Install = async (log, prog, ct) =>
         {
-            var url = await GitHubLatestAsset("namazso/PawnIO.Setup", a => a.EndsWith(".exe", StringComparison.OrdinalIgnoreCase), ct)
-                      ?? "https://github.com/namazso/PawnIO.Setup/releases/latest/download/PawnIO_setup.exe";
-            var file = await Download(url, "PawnIO_setup.exe", log, prog, ct);
-            log.Report("Abriendo el instalador de PawnIO… acepta los pasos en su ventana.");
-            await RunAndWait(file, "", ct);
+            var file = await DownloadAny(new[] { Mirror("PawnIO_setup.exe"), "https://github.com/namazso/PawnIO.Setup/releases/latest/download/PawnIO_setup.exe" }, "PawnIO_setup.exe", log, prog, ct);
+            // Guardamos el instalador dentro de OmniHub para poder desinstalarlo luego en silencio
+            Directory.CreateDirectory(AppInfo.ComponentsDir);
+            File.Copy(file, Path.Combine(AppInfo.ComponentsDir, "PawnIO_setup.exe"), true);
+            log.Report("Instalando el módulo de sensores en segundo plano…");
+            var code = await RunAndWait(file, "-install -silent", ct);
+            log.Report(Registry.LocalMachine.OpenSubKey(@"SYSTEM\CurrentControlSet\Services\PawnIO") != null
+                ? "Módulo de sensores listo." : $"El módulo de sensores terminó con código {code}; puede que necesite reiniciar.");
+        },
+        Uninstall = async log =>
+        {
+            var setup = Path.Combine(AppInfo.ComponentsDir, "PawnIO_setup.exe");
+            if (!File.Exists(setup))
+                setup = await DownloadAny(new[] { Mirror("PawnIO_setup.exe") }, "PawnIO_setup.exe", log, new Progress<double>(), CancellationToken.None);
+            await RunAndWait(setup, "-uninstall -silent", CancellationToken.None);
         }
     };
 
     public static readonly Component OpenRGB = new()
     {
         Id = "openrgb",
-        Name = "OpenRGB (motor de iluminación)",
-        Purpose = "Controla el RGB de placas, RAM, GPU, ratones, teclados, auriculares y ventiladores de casi todas las marcas.",
+        Name = "Módulo de iluminación",
+        Purpose = "RGB de placas, RAM, gráficas, ratones, teclados, auriculares y ventiladores de casi todas las marcas. Va dentro de la carpeta de OmniHub y funciona sin ventana.",
         Homepage = "https://openrgb.org",
         IsInstalled = () => FindOpenRgb() != null,
         Install = async (log, prog, ct) =>
         {
-            string? url = null;
-            try
-            {
-                using var doc = JsonDocument.Parse(await Http.GetStringAsync("https://codeberg.org/api/v1/repos/OpenRGB/OpenRGB/releases/latest", ct));
-                foreach (var a in doc.RootElement.GetProperty("assets").EnumerateArray())
-                {
-                    var n = a.GetProperty("name").GetString() ?? "";
-                    if (n.Contains("Windows_64") && n.EndsWith(".zip")) { url = a.GetProperty("browser_download_url").GetString(); break; }
-                }
-            }
-            catch (Exception e) { log.Report("No se pudo consultar la última versión (" + e.Message + "), uso la 1.1."); }
-            url ??= "https://codeberg.org/OpenRGB/OpenRGB/releases/download/release_1.1/OpenRGB_1.1_Windows_64_8e16de2.zip";
-            var zip = await Download(url, "OpenRGB.zip", log, prog, ct);
+            var zip = await DownloadAny(new[] { Mirror("OpenRGB-Windows-64.zip"), "https://codeberg.org/OpenRGB/OpenRGB/releases/download/release_1.1/OpenRGB_1.1_Windows_64_8e16de2.zip" }, "OpenRGB.zip", log, prog, ct);
             var dest = Path.Combine(AppInfo.ComponentsDir, "OpenRGB");
-            log.Report("Descomprimiendo OpenRGB…");
+            log.Report("Preparando el módulo de iluminación…");
+            foreach (var p in Process.GetProcessesByName("OpenRGB")) try { p.Kill(); p.WaitForExit(3000); } catch { }
             if (Directory.Exists(dest)) Directory.Delete(dest, true);
             Directory.CreateDirectory(dest);
             ZipFile.ExtractToDirectory(zip, dest, true);
-            log.Report(FindOpenRgb() != null ? "OpenRGB listo." : "Aviso: no encuentro OpenRGB.exe dentro del zip.");
+            log.Report(FindOpenRgb() != null ? "Módulo de iluminación listo." : "Aviso: el módulo de iluminación no se descomprimió bien.");
+        },
+        Uninstall = log =>
+        {
+            foreach (var p in Process.GetProcessesByName("OpenRGB")) try { p.Kill(); p.WaitForExit(3000); } catch { }
+            try { Directory.Delete(Path.Combine(AppInfo.ComponentsDir, "OpenRGB"), true); } catch { }
+            return Task.CompletedTask;
         }
     };
 
     public static readonly Component EqualizerApo = new()
     {
         Id = "eqapo",
-        Name = "Equalizer APO (ecualizador del sistema)",
-        Purpose = "Ecualizador para cualquier auricular o altavoz. En su instalador marca tus auriculares en la lista de dispositivos.",
+        Name = "Módulo de audio",
+        Purpose = "Ecualizador, corrección de auriculares y audio espacial para cualquier auricular o altavoz.",
         Homepage = "https://sourceforge.net/projects/equalizerapo/",
         IsInstalled = () => EqApoConfigDir() != null,
         Install = async (log, prog, ct) =>
         {
-            var file = await Download("https://sourceforge.net/projects/equalizerapo/files/latest/download", "EqualizerAPO-setup.exe", log, prog, ct);
-            log.Report("Abriendo el instalador de Equalizer APO… al final marca tus auriculares en el Configurator.");
-            await RunAndWait(file, "", ct);
+            var file = await DownloadAny(new[] { Mirror("EqualizerAPO-setup.exe"), "https://sourceforge.net/projects/equalizerapo/files/latest/download" }, "EqualizerAPO-setup.exe", log, prog, ct);
+            log.Report("Instalando el módulo de audio en segundo plano…");
+            await RunAndWait(file, "/S", ct);
+            log.Report(EqApoConfigDir() != null ? "Módulo de audio listo." : "El módulo de audio no se pudo instalar.");
+            if (EqApoConfigDir() != null && EqApoDevices().Count == 0)
+                log.Report("Nota: falta activarlo en tus auriculares. OmniHub te lo pedirá en «Audio» con un solo clic.");
+        },
+        Uninstall = async log =>
+        {
+            var dir = EqApoConfigDir();
+            var un = dir == null ? null : Path.Combine(Path.GetDirectoryName(dir)!, "Uninstall.exe");
+            if (un != null && File.Exists(un)) await RunAndWait(un, "/S", CancellationToken.None);
         }
     };
+
+    static async Task<string> DownloadAny(string[] urls, string fileName, IProgress<string> log, IProgress<double> prog, CancellationToken ct)
+    {
+        Exception? last = null;
+        foreach (var u in urls)
+        {
+            try { return await Download(u, fileName, log, prog, ct); }
+            catch (OperationCanceledException) { throw; }
+            catch (Exception e) { last = e; }
+        }
+        throw last ?? new Exception("Sin conexión");
+    }
 
     public static readonly Component[] All = { PawnIO, OpenRGB, EqualizerApo };
 
@@ -166,9 +196,39 @@ public static class Components
         return path;
     }
 
-    static async Task RunAndWait(string exe, string args, CancellationToken ct)
+    /// <summary>Ejecuta un instalador oculto, sin ventanas, y espera a que termine.</summary>
+    static async Task<int> RunAndWait(string exe, string args, CancellationToken ct)
     {
-        var p = Process.Start(new ProcessStartInfo(exe, args) { UseShellExecute = true });
-        if (p != null) await p.WaitForExitAsync(ct);
+        var p = Process.Start(new ProcessStartInfo(exe, args)
+        {
+            UseShellExecute = false, CreateNoWindow = true, WindowStyle = ProcessWindowStyle.Hidden,
+            WorkingDirectory = Path.GetDirectoryName(exe)!
+        });
+        if (p == null) return -1;
+        using var to = CancellationTokenSource.CreateLinkedTokenSource(ct);
+        to.CancelAfter(TimeSpan.FromMinutes(5));
+        try { await p.WaitForExitAsync(to.Token); }
+        catch (OperationCanceledException) when (!ct.IsCancellationRequested) { return -2; }
+        return p.ExitCode;
+    }
+
+    /// <summary>GUIDs (en minúsculas) de los dispositivos de audio donde Equalizer APO está activo.</summary>
+    public static HashSet<string> EqApoDevices()
+    {
+        var set = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        try
+        {
+            using var k = Registry.LocalMachine.OpenSubKey(@"SOFTWARE\EqualizerAPO\Child APOs");
+            if (k != null) foreach (var n in k.GetSubKeyNames()) set.Add(n.Trim('{', '}'));
+        }
+        catch { }
+        return set;
+    }
+
+    public static string? EqApoDeviceSelector()
+    {
+        var dir = EqApoConfigDir();
+        var exe = dir == null ? null : Path.Combine(Path.GetDirectoryName(dir)!, "DeviceSelector.exe");
+        return exe != null && File.Exists(exe) ? exe : null;
     }
 }

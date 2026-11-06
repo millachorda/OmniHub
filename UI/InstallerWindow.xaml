@@ -22,7 +22,7 @@
                     <StackPanel x:Name="Steps" Margin="0,36,0,0">
                         <TextBlock Text="1  Bienvenida" Margin="0,0,0,14"/>
                         <TextBlock Text="2  Tu hardware" Margin="0,0,0,14"/>
-                        <TextBlock Text="3  Componentes" Margin="0,0,0,14"/>
+                        <TextBlock Text="3  Módulos" Margin="0,0,0,14"/>
                         <TextBlock Text="4  Opciones" Margin="0,0,0,14"/>
                         <TextBlock Text="5  Instalación" Margin="0,0,0,14"/>
                     </StackPanel>
@@ -45,7 +45,7 @@
                     <Border Style="{StaticResource CardBox}">
                         <StackPanel>
                             <TextBlock Style="{StaticResource H2}" Text="Qué va a pasar"/>
-                            <TextBlock Style="{StaticResource Sub}" Text="1. Escaneo tu hardware para saber qué tienes.&#x0a;2. Te recomiendo solo los componentes que tu PC necesita (gratuitos y de código abierto) y los descargo de sus webs oficiales.&#x0a;3. Instalo OmniHub con su launcher, accesos directos y desinstalador."/>
+                            <TextBlock Style="{StaticResource Sub}" Text="1. Escaneo tu hardware para saber qué tienes.&#x0a;2. Elijo solo los módulos que tu PC necesita y los instalo en segundo plano, sin ventanas, desde el repositorio de OmniHub.&#x0a;3. Instalo OmniHub con su launcher y un desinstalador que lo quita todo, módulos incluidos."/>
                         </StackPanel>
                     </Border>
                     <TextBlock Style="{StaticResource Sub}" FontSize="11"
@@ -66,9 +66,9 @@
                 <!-- Página 3: componentes -->
                 <DockPanel x:Name="P3" Grid.Row="1" Visibility="Collapsed">
                     <StackPanel DockPanel.Dock="Top">
-                        <TextBlock Style="{StaticResource H1}" Text="Componentes recomendados"/>
+                        <TextBlock Style="{StaticResource H1}" Text="Módulos recomendados"/>
                         <TextBlock Style="{StaticResource Sub}" Margin="0,0,0,14"
-                                   Text="Según tu hardware, estos motores gratuitos hacen que OmniHub funcione con tus dispositivos. Se descargan de su web oficial."/>
+                                   Text="Según tu hardware, estos módulos de OmniHub hacen que funcione con tus dispositivos. Se instalan en segundo plano y se quitan al desinstalar OmniHub."/>
                     </StackPanel>
                     <ScrollViewer VerticalScrollBarVisibility="Auto">
                         <StackPanel x:Name="CompList"/>
