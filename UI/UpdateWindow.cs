@@ -40,6 +40,8 @@ public class UpdateWindow : Window
         };
         FontFamily = (FontFamily)app.FindResource("UiFont");
         _text.Text = "Buscando actualizaciones…";
+        // Abrir minimizado: la comprobación se hace igual pero sin enseñar nada (salvo si hay que actualizar)
+        if (Settings.Current.StartMinimized) { Opacity = 0; ShowInTaskbar = false; }
         Loaded += async (_, _) => await RunAsync();
     }
 
@@ -55,6 +57,7 @@ public class UpdateWindow : Window
 
         if (rel != null && rel.Version > Updater.Current)
         {
+            Opacity = 1; ShowInTaskbar = true;
             _text.Text = $"Actualizando a {rel.Tag}…";
             _bar.IsIndeterminate = false;
             try
@@ -69,7 +72,8 @@ public class UpdateWindow : Window
             }
         }
 
-        new MainWindow().Show();
+        var main = new MainWindow();
+        if (Settings.Current.StartMinimized) main.StartHidden(); else main.Show();
         Close();
     }
 }

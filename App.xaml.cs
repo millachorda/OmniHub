@@ -104,7 +104,11 @@ public partial class App : Application
 
         // Sin launcher: al abrir solo se buscan actualizaciones (en la copia instalada) y se abre la app
         if (AppInfo.RunningInstalled && !Hub.TestMode) new UpdateWindow().Show();
-        else new MainWindow().Show();
+        else
+        {
+            var main = new MainWindow();
+            if (Settings.Current.StartMinimized && !Hub.TestMode) main.StartHidden(); else main.Show();
+        }
     }
 
     /// <summary>Registro de errores en %AppData%\OmniHub\errores.log para poder diagnosticar.</summary>

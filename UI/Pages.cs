@@ -552,6 +552,7 @@ public partial class MainWindow
             Header("Ajustes", $"OmniHub {AppInfo.Version}"),
             Card(H2("General"),
                 Toggle("Al cerrar la ventana, seguir en la bandeja del sistema", St.CloseToTray, v => { St.CloseToTray = v; SaveSoon(); }),
+                Toggle("Abrir minimizado en la bandeja (sin mostrar la ventana)", St.StartMinimized, v => { St.StartMinimized = v; SaveSoon(); }),
                 Toggle("Iniciar con Windows", St.StartWithWindows, v => { St.StartWithWindows = v; SystemTools.SetStartup(v, AppInfo.ExePath); SaveSoon(); })),
             Card(H2("Apps del fabricante"),
                 Sub(vendors.Count == 0 ? "No hay ninguna abierta ahora mismo." : "Abiertas ahora: " + string.Join(", ", vendors)),

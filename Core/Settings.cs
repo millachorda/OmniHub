@@ -7,7 +7,7 @@ namespace OmniHub.Core;
 public static class AppInfo
 {
     public const string Name = "OmniHub";
-    public const string Version = "1.0.5";
+    public const string Version = "1.0.6";
     public const string UninstallKey = @"SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall\OmniHub";
 
     public static string DefaultInstallDir =>
@@ -80,6 +80,7 @@ public class Settings
     // General
     public bool SkipLauncher { get; set; }
     public bool CloseToTray { get; set; } = true;
+    public bool StartMinimized { get; set; }     // abrir directamente en la bandeja, sin ventana
     public bool StartWithWindows { get; set; }
     public bool CloseVendorApps { get; set; }
     public string? OpenRgbPath { get; set; }
