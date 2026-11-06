@@ -8,16 +8,18 @@ namespace OmniHub.Services;
 public static class Actions
 {
     public const string Default = "Predeterminado";
+    public const string GShift = "G-Shift (mantener)";
 
     public static readonly string[] All =
     {
         Default, "Desactivado",
-        "Francotirador DPI (mantener)", "Ciclar DPI", "Turbo ventiladores (activar/parar)",
+        "Francotirador DPI (mantener)", "Ciclar DPI", "Subir DPI", "Bajar DPI", GShift, "Turbo ventiladores (activar/parar)",
+        "Desplazar a la izquierda", "Desplazar a la derecha",
         "Reproducir / Pausa", "Siguiente pista", "Pista anterior",
         "Subir volumen", "Bajar volumen", "Silenciar sonido",
         "Silenciar micrófono (sistema)",
         "Discord: silenciar micro (Ctrl+Shift+M)", "Discord: ensordecer (Ctrl+Shift+D)",
-        HotkeyLabel, HoldLabel,
+        HotkeyLabel, HoldLabel, MacroLabel,
         "Copiar", "Pegar", "Deshacer", "Atrás", "Adelante",
         "Mostrar escritorio", "Captura de pantalla", "Administrador de tareas",
         "Abrir OmniHub",
@@ -26,8 +28,47 @@ public static class Actions
     // Acciones con tecla elegida por el usuario: se guardan como "Atajo: Ctrl+Shift+M" o "Mantener: V"
     public const string HotkeyLabel = "Atajo de teclado…";
     public const string HoldLabel = "Mantener tecla (pulsar para hablar)…";
-    public static bool IsCustom(string a) => a.StartsWith("Atajo: ") || a.StartsWith("Mantener: ");
-    public static string LabelOf(string a) => a.StartsWith("Atajo: ") ? HotkeyLabel : a.StartsWith("Mantener: ") ? HoldLabel : a;
+    public const string MacroLabel = "Macro (secuencia)…";
+    public static bool IsCustom(string a) => a.StartsWith("Atajo: ") || a.StartsWith("Mantener: ") || a.StartsWith("Macro: ");
+    public static string LabelOf(string a) => a.StartsWith("Atajo: ") ? HotkeyLabel : a.StartsWith("Mantener: ") ? HoldLabel : a.StartsWith("Macro: ") ? MacroLabel : a;
+    public static string Prefix(string label) => label == HotkeyLabel ? "Atajo: " : label == HoldLabel ? "Mantener: " : label == MacroLabel ? "Macro: " : "";
+
+    /// <summary>
+    /// Macro: pasos separados por comas. Un número = esperar esos ms; «texto:hola» escribe texto;
+    /// cualquier otra cosa es un atajo. Ej.: «Ctrl+A, 50, Ctrl+C, 200, Alt+Tab, texto:gg wp, Enter».
+    /// </summary>
+    public static void RunMacro(string spec)
+    {
+        var steps = spec.Split(',', StringSplitOptions.TrimEntries | StringSplitOptions.RemoveEmptyEntries);
+        Task.Run(async () =>
+        {
+            foreach (var s in steps)
+            {
+                if (int.TryParse(s, out var ms)) { await Task.Delay(Math.Clamp(ms, 0, 10000)); continue; }
+                if (s.StartsWith("texto:", StringComparison.OrdinalIgnoreCase)) { TypeText(s[6..]); continue; }
+                Hotkey(s);
+                await Task.Delay(15);
+            }
+        });
+    }
+
+    [StructLayout(LayoutKind.Sequential)]
+    struct INPUT { public uint type; public KEYBDINPUT ki; public long pad; }
+    [StructLayout(LayoutKind.Sequential)]
+    struct KEYBDINPUT { public ushort wVk, wScan; public uint dwFlags, time; public IntPtr extra; }
+    [DllImport("user32.dll")] static extern uint SendInput(uint n, INPUT[] inputs, int size);
+
+    /// <summary>Escribe texto tal cual (acentos y emojis incluidos).</summary>
+    public static void TypeText(string text)
+    {
+        var list = new List<INPUT>();
+        foreach (var ch in text)
+        {
+            list.Add(new INPUT { type = 1, ki = new KEYBDINPUT { wScan = ch, dwFlags = 0x0004 } });
+            list.Add(new INPUT { type = 1, ki = new KEYBDINPUT { wScan = ch, dwFlags = 0x0004 | 0x0002 } });
+        }
+        if (list.Count > 0) SendInput((uint)list.Count, list.ToArray(), Marshal.SizeOf<INPUT>());
+    }
     public static string KeysOf(string a) => a.Contains(": ") && IsCustom(a) ? a[(a.IndexOf(": ") + 2)..] : "";
 
     // Teclas virtuales
@@ -50,10 +91,15 @@ public static class Actions
         }
         if (!down) return;
         if (action.StartsWith("Atajo: ")) { Hotkey(action[7..]); return; }
+        if (action.StartsWith("Macro: ")) { RunMacro(action[7..]); return; }
         switch (action)
         {
             case "Desactivado": break;
             case "Ciclar DPI": Hub.Mouse.CycleDpi(); break;
+            case "Subir DPI": Hub.Mouse.StepDpi(+1); break;
+            case "Bajar DPI": Hub.Mouse.StepDpi(-1); break;
+            case "Desplazar a la izquierda": mouse_event(0x01000, 0, 0, -120, UIntPtr.Zero); break;
+            case "Desplazar a la derecha": mouse_event(0x01000, 0, 0, 120, UIntPtr.Zero); break;
             case "Turbo ventiladores (activar/parar)":
                 Hub.Fans.Boost = !Hub.Fans.Boost;
                 Hub.Toast(Hub.Fans.Boost ? "Turbo: ventiladores al 100 %" : "Turbo desactivado");
@@ -83,6 +129,7 @@ public static class Actions
     }
 
     [DllImport("user32.dll")] static extern void keybd_event(byte vk, byte scan, uint flags, UIntPtr extra);
+    [DllImport("user32.dll")] static extern void mouse_event(uint flags, int dx, int dy, int data, UIntPtr extra);
 
     static void Key(byte vk)
     {

@@ -30,14 +30,26 @@ public sealed class MouseService : IDisposable
     public int GButtonCount { get; private set; }
     int _mask;
 
-    public static string GKey(int n) => $"LG{n}";
-    static string GAction(int n) => Settings.Current.ButtonMap.TryGetValue(GKey(n), out var a) ? a : Actions.Default;
+    /// <summary>Clave de ajustes del botón n; la capa G-Shift lleva "^" al final.</summary>
+    public static string GKey(int n, bool shift = false) => shift ? $"LG{n}^" : $"LG{n}";
+    static string GAction(int n, bool shift = false)
+    {
+        var m = Settings.Current.ButtonMap;
+        if (shift && m.TryGetValue(GKey(n, true), out var s) && s != Actions.Default) return s;
+        return m.TryGetValue(GKey(n), out var a) ? a : Actions.Default;
+    }
+
+    /// <summary>Capa G-Shift activa mientras se mantiene el botón que tiene la acción «G-Shift».</summary>
+    public bool GShift { get; private set; }
+    int _shiftButton;
+    readonly Dictionary<int, string> _downAction = new(); // la acción que se ejecutó al pulsar (para soltar la misma)
 
     void SetupGButtons()
     {
         GButtonCount = 0;
         if (Active is not { } d || !d.HasButtonSpy) return;
         GButtonCount = Math.Min(16, d.ButtonCount);
+        if (Hub.TestMode) return;
         d.ButtonsChanged += OnButtons;
         d.StartSpy();
         ApplyRemap();
@@ -52,7 +64,10 @@ public sealed class MouseService : IDisposable
         if (Active is not { } d || GButtonCount == 0) return;
         var map = new byte[16];
         for (int i = 1; i <= GButtonCount; i++)
-            map[i - 1] = i <= 3 ? (byte)i : GAction(i) == Actions.Default && i is 4 or 5 ? (byte)i : (byte)0;
+        {
+            bool free = GAction(i) == Actions.Default && !(Settings.Current.ButtonMap.TryGetValue(GKey(i, true), out var s) && s != Actions.Default);
+            map[i - 1] = i <= 3 ? (byte)i : free && i is 4 or 5 ? (byte)i : (byte)0;
+        }
         Task.Run(() => d.SetRemap(map));
     }
 
@@ -67,7 +82,14 @@ public sealed class MouseService : IDisposable
             bool down = ((mask >> i) & 1) != 0;
             if (down) GButtonPressed?.Invoke(btn);
             if (btn <= 3) continue;
-            var a = GAction(btn);
+            string a;
+            if (down) { a = GAction(btn, GShift && btn != _shiftButton); _downAction[btn] = a; }
+            else a = _downAction.TryGetValue(btn, out var d) ? d : GAction(btn);
+            if (a == Actions.GShift)
+            {
+                GShift = down; _shiftButton = down ? btn : 0;
+                continue;
+            }
             if (a == Actions.Default) continue;
             System.Windows.Application.Current?.Dispatcher.BeginInvoke(() => Actions.Run(a, down));
         }
@@ -105,6 +127,15 @@ public sealed class MouseService : IDisposable
         var st = Settings.Current.DpiStages;
         if (st.Count == 0 || Active == null) return;
         _stage = (_stage + 1) % st.Count;
+        SetDpi(st[_stage]);
+        Hub.Toast($"DPI: {st[_stage]}");
+    }
+
+    public void StepDpi(int dir)
+    {
+        var st = Settings.Current.DpiStages;
+        if (st.Count == 0 || Active == null) return;
+        _stage = Math.Clamp(_stage + dir, 0, st.Count - 1);
         SetDpi(st[_stage]);
         Hub.Toast($"DPI: {st[_stage]}");
     }
@@ -174,7 +205,7 @@ public sealed class MouseService : IDisposable
     {
         if (_hook != IntPtr.Zero) UnhookWindowsHookEx(_hook);
         // Al salir el ratón vuelve a funcionar solo: laterales como Atrás/Adelante
-        if (Active is { } m && GButtonCount > 0)
+        if (Active is { } m && GButtonCount > 0 && !Hub.TestMode)
         {
             try { m.StopSpy(); m.SetRemap(new byte[] { 1, 2, 3, 4, 5 }); } catch { }
         }

@@ -70,6 +70,8 @@ public partial class MainWindow : Window
                 "Panel" => PageDashboard(),
                 "Luces" => PageLights(),
                 "Fans" => PageFans(),
+                "Rendimiento" => PagePerformance(),
+                "Monitor" => PageMonitor(),
                 "Mouse" => PageMouse(),
                 "Audio" => PageAudio(),
                 "Apps" => PageIntegrations(),

@@ -17,6 +17,8 @@ public static class Hub
     public static DiscordService Discord { get; } = new();
 
     public static Action? ShowMain;
+    /// <summary>Modo de prueba (--test): solo lectura, no toca el ratón ni se bloquea por instancia única.</summary>
+    public static bool TestMode;
     public static Action<string>? ToastHandler;
     public static event Action? Ticked;
     public static string ActiveProfile { get; private set; } = "";
@@ -47,7 +49,7 @@ public static class Hub
 
         log?.Report("Buscando ratones…");
         await Task.Run(Mouse.Discover);
-        Mouse.InstallHook();
+        if (!TestMode) Mouse.InstallHook();
 
         log?.Report("Conectando con multimedia…");
         await Media.InitAsync();

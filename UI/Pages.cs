@@ -359,9 +359,10 @@ public partial class MainWindow
     }
 
     // =====================================================================
-    UIElement PageMouse()
+    UIElement MouseSensitivityPage()
     {
-        var root = Stack(Header("Ratón", "Sensibilidad, DPI y botones — funciona con cualquier ratón; Logitech además por hardware"));
+        var root = new StackPanel();
+
 
         root.Children.Add(Card(H2("Sensibilidad de Windows (cualquier ratón)"),
             LabeledSlider("Velocidad del puntero", 1, 20, MouseService.PointerSpeed, v => MouseService.PointerSpeed = (int)v),
@@ -405,39 +406,6 @@ public partial class MainWindow
                 Btn("Buscar de nuevo", () => { Hub.Mouse.Discover(); Refresh(); })));
         }
 
-        // ---- Botones G del ratón Logitech (por hardware, sin G HUB) ----
-        if (Hub.Mouse.GButtonCount > 3)
-        {
-            var gList = new StackPanel();
-            var rows = new Dictionary<int, Border>();
-            for (int i = 4; i <= Hub.Mouse.GButtonCount; i++)
-            {
-                var row = ButtonRow($"Botón {i}", MouseService.GKey(i), () => Hub.Mouse.ApplyRemap());
-                var box = new Border { CornerRadius = new CornerRadius(8), Padding = new Thickness(8, 2, 8, 2), BorderThickness = new Thickness(1), BorderBrush = Brushes.Transparent, Child = row };
-                rows[i] = box;
-                gList.Children.Add(box);
-            }
-            var last = Sub("Pulsa cualquier botón del ratón y se iluminará su fila.", 12);
-            void Pressed(int b) => Dispatcher.BeginInvoke(() =>
-            {
-                last.Text = b <= 3 ? $"Has pulsado el botón {b} ({(b == 1 ? "izquierdo" : b == 2 ? "derecho" : "rueda")})." : $"Has pulsado el botón {b}.";
-                foreach (var (n, bx) in rows) { bx.BorderBrush = n == b ? B("Accent") : Brushes.Transparent; bx.Background = n == b ? B("CardHi") : Brushes.Transparent; }
-            });
-            Hub.Mouse.GButtonPressed += Pressed;
-            _cleanup.Add(() => Hub.Mouse.GButtonPressed -= Pressed);
-            var title = H2($"Botones G · {Hub.Mouse.Active?.Name}"); title.Foreground = B("Accent");
-            root.Children.Add(Card(title,
-                Sub("Los botones extra de tu ratón, configurados por OmniHub directamente en el ratón (sin G HUB). Al cerrar OmniHub, los laterales vuelven a ser Atrás/Adelante."),
-                last, gList,
-                Sub("Para Discord: elige «Discord: silenciar micro» o usa «Atajo de teclado…» con el mismo atajo que tengas en Discord → Ajustes → Atajos de teclado. Para pulsar para hablar usa «Mantener tecla».", 12)));
-        }
-
-        var btns = new StackPanel();
-        foreach (var b in MouseService.Buttons)
-            btns.Children.Add(ButtonRow(b, b, null));
-        root.Children.Add(Card(H2(Hub.Mouse.GButtonCount > 3 ? "Botones de Windows (otros ratones)" : "Botones (cualquier ratón)"), btns,
-            Sub(Hub.Mouse.GButtonCount > 3 ? "Sirven para cualquier ratón que tengas conectado. Si un botón tiene acción aquí y arriba, gana la de arriba."
-                : "Los botones extra que el ratón gestiona por sí mismo (p. ej. los de DPI) no llegan a Windows y no se pueden reasignar aquí.", 12)));
         return root;
     }
 
@@ -458,19 +426,21 @@ public partial class MainWindow
         void Store(string label2)
         {
             var k = keys.Text.Trim();
-            St.ButtonMap[key] = label2 == Actions.HotkeyLabel ? "Atajo: " + k : label2 == Actions.HoldLabel ? "Mantener: " + k : label2;
+            var pre = Actions.Prefix(label2); St.ButtonMap[key] = pre.Length > 0 ? pre + k : label2;
             SaveSoon(); changed?.Invoke();
         }
         var c = Combo(Actions.All, Actions.LabelOf(current), v =>
         {
-            bool isCustom = v is Actions.HotkeyLabel or Actions.HoldLabel;
+            bool isCustom = v is Actions.HotkeyLabel or Actions.HoldLabel or Actions.MacroLabel;
+            keys.Width = v == Actions.MacroLabel ? 320 : 170;
+            keys.ToolTip = v == Actions.MacroLabel ? "Pasos separados por comas: atajos, esperas en ms y texto:… Ej.: Ctrl+C, 100, Alt+Tab, Ctrl+V" : "Ej.: Ctrl+Shift+M, F13, V, Alt+Espacio";
             keys.Visibility = save.Visibility = isCustom ? Visibility.Visible : Visibility.Collapsed;
             if (isCustom && keys.Text.Trim().Length == 0) { keys.Focus(); return; }
             Store(v);
         }, 280);
         save.Click += (_, _) =>
         {
-            if (Actions.Parse(keys.Text).Count == 0) { Toast("Atajo no válido (ej.: Ctrl+Shift+M)"); return; }
+            if ((string)c.SelectedItem != Actions.MacroLabel && Actions.Parse(keys.Text).Count == 0) { Toast("Atajo no válido (ej.: Ctrl+Shift+M)"); return; }
             Store((string)c.SelectedItem); Toast($"{label}: {keys.Text.Trim()}");
         };
         Grid.SetColumn(c, 1); Grid.SetColumn(custom, 2);

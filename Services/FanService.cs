@@ -26,7 +26,7 @@ public sealed class FanService : IDisposable
     readonly Computer _pc = new()
     {
         IsCpuEnabled = true, IsGpuEnabled = true, IsMotherboardEnabled = true,
-        IsControllerEnabled = true, IsMemoryEnabled = false, IsStorageEnabled = true,
+        IsControllerEnabled = true, IsMemoryEnabled = true, IsStorageEnabled = true,
     };
 
     public List<FanChannel> Channels { get; } = new();
@@ -100,7 +100,11 @@ public sealed class FanService : IDisposable
         if (!Opened) return;
         try { UpdateAll(); } catch { return; }
 
-        CpuTemp = PickTemp(HardwareType.Cpu, "Package", "Tctl", "Tdie", "Core (Tctl/Tdie)", "Core Max", "Core Average");
+        CpuTemp = PickTemp(HardwareType.Cpu, "Package", "Tctl", "Tdie", "Core (Tctl/Tdie)", "CCD", "Core Max", "Core Average");
+        // Si el procesador no da su sensor: el sensor "CPU" de la placa base y, por último, la zona térmica de Windows
+        if (CpuTemp <= 0) CpuTemp = PickTemp(new[] { HardwareType.Motherboard, HardwareType.SuperIO, HardwareType.EmbeddedController }, "CPU Core", "CPU Socket", "CPU");
+        if (CpuTemp <= 0 && _tick++ % 5 == 0) _acpiTemp = AcpiTemp();
+        if (CpuTemp <= 0) CpuTemp = _acpiTemp;
         GpuTemp = PickTemp(new[] { HardwareType.GpuNvidia, HardwareType.GpuAmd, HardwareType.GpuIntel }, "GPU Core", "GPU Hot Spot", "Core");
         CpuLoad = PickLoad(HardwareType.Cpu, "CPU Total");
         GpuLoad = PickLoad(new[] { HardwareType.GpuNvidia, HardwareType.GpuAmd, HardwareType.GpuIntel }, "GPU Core", "D3D 3D");
@@ -153,6 +157,26 @@ public sealed class FanService : IDisposable
     }
 
     double PickTemp(HardwareType t, params string[] names) => PickTemp(new[] { t }, names);
+    int _tick;
+    double _acpiTemp;
+
+    /// <summary>Temperatura de la zona térmica ACPI (aproximada, pero funciona sin drivers en casi todos los PC).</summary>
+    static double AcpiTemp()
+    {
+        try
+        {
+            using var s = new System.Management.ManagementObjectSearcher(@"root\WMI", "SELECT CurrentTemperature FROM MSAcpi_ThermalZoneTemperature");
+            double best = 0;
+            foreach (var o in s.Get())
+            {
+                var c = Convert.ToDouble(o["CurrentTemperature"]) / 10.0 - 273.15; // décimas de Kelvin
+                if (c is > 5 and < 120) best = Math.Max(best, c);
+            }
+            return best;
+        }
+        catch { return 0; }
+    }
+
     double PickTemp(HardwareType[] types, params string[] names)
     {
         var hw = AllHw().Where(h => types.Contains(h.HardwareType)).ToList();
@@ -174,6 +198,16 @@ public sealed class FanService : IDisposable
                     if (s.SensorType == SensorType.Load && s.Name.Contains(n, StringComparison.OrdinalIgnoreCase) && s.Value != null)
                         return s.Value.Value;
         return 0;
+    }
+
+    /// <summary>Todos los sensores agrupados por componente (para el monitor de hardware).</summary>
+    public List<(string hardware, string type, List<ISensor> sensors)> SensorGroups()
+    {
+        var res = new List<(string, string, List<ISensor>)>();
+        if (!Opened) return res;
+        foreach (var h in AllHw())
+            res.Add((h.Name, h.HardwareType.ToString(), h.Sensors.Where(s => s.Value != null).OrderBy(s => s.SensorType).ThenBy(s => s.Index).ToList()));
+        return res.Where(g => g.Item3.Count > 0).ToList();
     }
 
     /// <summary>Devuelve todos los ventiladores al control de la BIOS (al salir).</summary>

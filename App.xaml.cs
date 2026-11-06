@@ -1,4 +1,4 @@
-﻿using System.Threading;
+using System.Threading;
 using System.Windows;
 using OmniHub.Core;
 using OmniHub.Services;
@@ -19,11 +19,15 @@ public partial class App : Application
     protected override void OnStartup(StartupEventArgs e)
     {
         base.OnStartup(e);
+        System.Text.Encoding.RegisterProvider(System.Text.CodePagesEncodingProvider.Instance);
         DispatcherUnhandledException += (_, ex) =>
         {
+            LogCrash(ex.Exception);
             MessageBox.Show(ex.Exception.Message, "OmniHub", MessageBoxButton.OK, MessageBoxImage.Warning);
             ex.Handled = true;
         };
+        AppDomain.CurrentDomain.UnhandledException += (_, ex) => LogCrash(ex.ExceptionObject as Exception);
+        TaskScheduler.UnobservedTaskException += (_, ex) => { LogCrash(ex.Exception); ex.SetObserved(); };
 
         var args = e.Args.Select(a => a.ToLowerInvariant()).ToArray();
 
@@ -67,7 +71,8 @@ public partial class App : Application
             return;
         }
 
-        _single = new Mutex(true, "OmniHub.SingleInstance", out bool first);
+        Hub.TestMode = args.Contains("--test");
+        _single = new Mutex(true, Hub.TestMode ? "OmniHub.Test" : "OmniHub.SingleInstance", out bool first);
         if (!first)
         {
             MessageBox.Show("OmniHub ya está abierto (mira en la bandeja del sistema).", "OmniHub");
@@ -84,6 +89,13 @@ public partial class App : Application
 
         if (Settings.Current.SkipLauncher) new MainWindow().Show();
         else new LauncherWindow().Show();
+    }
+
+    /// <summary>Registro de errores en %AppData%\OmniHub\errores.log para poder diagnosticar.</summary>
+    static void LogCrash(Exception? e)
+    {
+        if (e == null) return;
+        try { System.IO.File.AppendAllText(System.IO.Path.Combine(AppInfo.DataDir, "errores.log"), $"[{DateTime.Now:yyyy-MM-dd HH:mm:ss}] v{AppInfo.Version}\n{e}\n\n"); } catch { }
     }
 
     static bool IsAdmin() =>
