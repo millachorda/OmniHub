@@ -1,0 +1,115 @@
+<Window x:Class="OmniHub.UI.InstallerWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="Instalar OmniHub" Width="900" Height="600" WindowStartupLocation="CenterScreen"
+        WindowStyle="None" AllowsTransparency="True" Background="Transparent" ResizeMode="NoResize"
+        FontFamily="{StaticResource UiFont}" Foreground="{StaticResource Text}">
+    <Border Background="{StaticResource Bg}" CornerRadius="16" BorderBrush="{StaticResource Line}" BorderThickness="1">
+        <Grid>
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="260"/>
+                <ColumnDefinition/>
+            </Grid.ColumnDefinitions>
+
+            <!-- Lateral -->
+            <Border Background="{StaticResource Side}" CornerRadius="16,0,0,16" MouseLeftButtonDown="Drag">
+                <DockPanel Margin="26">
+                    <StackPanel DockPanel.Dock="Top" Orientation="Horizontal">
+                        <Image Source="/Assets/logo.png" Width="40" Height="40"/>
+                        <TextBlock Text="OmniHub" FontSize="22" FontWeight="SemiBold" VerticalAlignment="Center" Margin="10,0,0,0"/>
+                    </StackPanel>
+                    <TextBlock DockPanel.Dock="Bottom" Style="{StaticResource Sub}" FontSize="11" Text="v1.0.0 · Luces, ventiladores, ratón, audio e integraciones en una sola app."/>
+                    <StackPanel x:Name="Steps" Margin="0,36,0,0">
+                        <TextBlock Text="1  Bienvenida" Margin="0,0,0,14"/>
+                        <TextBlock Text="2  Tu hardware" Margin="0,0,0,14"/>
+                        <TextBlock Text="3  Componentes" Margin="0,0,0,14"/>
+                        <TextBlock Text="4  Opciones" Margin="0,0,0,14"/>
+                        <TextBlock Text="5  Instalación" Margin="0,0,0,14"/>
+                    </StackPanel>
+                </DockPanel>
+            </Border>
+
+            <Grid Grid.Column="1" Margin="34,22,30,26">
+                <Grid.RowDefinitions>
+                    <RowDefinition Height="Auto"/>
+                    <RowDefinition/>
+                    <RowDefinition Height="Auto"/>
+                </Grid.RowDefinitions>
+                <Button Content="✕" HorizontalAlignment="Right" Padding="10,4" Click="Cancel_Click" Background="Transparent" BorderBrush="Transparent"/>
+
+                <!-- Página 1 -->
+                <StackPanel x:Name="P1" Grid.Row="1" VerticalAlignment="Center">
+                    <TextBlock Style="{StaticResource H1}" FontSize="32" Text="Un centro de control para todo tu PC"/>
+                    <TextBlock Style="{StaticResource Sub}" FontSize="15" Margin="0,8,0,24"
+                               Text="OmniHub reúne en una sola app la iluminación RGB, los ventiladores, el ratón, el sonido de tus auriculares y las integraciones con Spotify, Discord y OBS — sea cual sea la marca de tu placa base, gráfica o periféricos."/>
+                    <Border Style="{StaticResource CardBox}">
+                        <StackPanel>
+                            <TextBlock Style="{StaticResource H2}" Text="Qué va a pasar"/>
+                            <TextBlock Style="{StaticResource Sub}" Text="1. Escaneo tu hardware para saber qué tienes.&#x0a;2. Te recomiendo solo los componentes que tu PC necesita (gratuitos y de código abierto) y los descargo de sus webs oficiales.&#x0a;3. Instalo OmniHub con su launcher, accesos directos y desinstalador."/>
+                        </StackPanel>
+                    </Border>
+                    <TextBlock Style="{StaticResource Sub}" FontSize="11"
+                               Text="Aviso: controlar ventiladores y RGB por software actúa directamente sobre el hardware. OmniHub devuelve los ventiladores a la BIOS al cerrarse."/>
+                </StackPanel>
+
+                <!-- Página 2: hardware -->
+                <DockPanel x:Name="P2" Grid.Row="1" Visibility="Collapsed">
+                    <StackPanel DockPanel.Dock="Top">
+                        <TextBlock Style="{StaticResource H1}" Text="Tu hardware"/>
+                        <TextBlock x:Name="ScanStatus" Style="{StaticResource Sub}" Text="Escaneando…" Margin="0,0,0,14"/>
+                    </StackPanel>
+                    <ScrollViewer VerticalScrollBarVisibility="Auto">
+                        <StackPanel x:Name="HwList"/>
+                    </ScrollViewer>
+                </DockPanel>
+
+                <!-- Página 3: componentes -->
+                <DockPanel x:Name="P3" Grid.Row="1" Visibility="Collapsed">
+                    <StackPanel DockPanel.Dock="Top">
+                        <TextBlock Style="{StaticResource H1}" Text="Componentes recomendados"/>
+                        <TextBlock Style="{StaticResource Sub}" Margin="0,0,0,14"
+                                   Text="Según tu hardware, estos motores gratuitos hacen que OmniHub funcione con tus dispositivos. Se descargan de su web oficial."/>
+                    </StackPanel>
+                    <ScrollViewer VerticalScrollBarVisibility="Auto">
+                        <StackPanel x:Name="CompList"/>
+                    </ScrollViewer>
+                </DockPanel>
+
+                <!-- Página 4: opciones -->
+                <StackPanel x:Name="P4" Grid.Row="1" Visibility="Collapsed">
+                    <TextBlock Style="{StaticResource H1}" Text="Opciones"/>
+                    <TextBlock Style="{StaticResource Sub}" Text="Carpeta de instalación" Margin="0,14,0,6"/>
+                    <DockPanel>
+                        <Button DockPanel.Dock="Right" Content="Cambiar…" Click="Browse_Click" Margin="0,0,0,8"/>
+                        <TextBox x:Name="DirBox"/>
+                    </DockPanel>
+                    <CheckBox x:Name="OptDesktop" Content="Crear acceso directo en el escritorio" IsChecked="True" Margin="0,12,0,4"/>
+                    <CheckBox x:Name="OptStartup" Content="Iniciar OmniHub con Windows (en la bandeja)"/>
+                    <CheckBox x:Name="OptVendor" Content="Cerrar las apps del fabricante al abrir OmniHub (evita que se peleen por las luces)"/>
+                    <TextBlock x:Name="VendorNote" Style="{StaticResource Sub}" Margin="48,0,0,0" FontSize="12"/>
+                </StackPanel>
+
+                <!-- Página 5: progreso -->
+                <DockPanel x:Name="P5" Grid.Row="1" Visibility="Collapsed">
+                    <StackPanel DockPanel.Dock="Top">
+                        <TextBlock x:Name="InstallTitle" Style="{StaticResource H1}" Text="Instalando…"/>
+                        <ProgressBar x:Name="Bar" Height="6" Maximum="1" Margin="0,10,0,6" Foreground="{StaticResource Accent}" Background="{StaticResource Line}" BorderThickness="0"/>
+                        <ProgressBar x:Name="SubBar" Height="3" Maximum="1" Margin="0,0,0,14" Foreground="{StaticResource Accent2}" Background="{StaticResource Line}" BorderThickness="0"/>
+                    </StackPanel>
+                    <Border Style="{StaticResource CardBox}" Padding="12">
+                        <ScrollViewer x:Name="LogScroll" VerticalScrollBarVisibility="Auto">
+                            <TextBlock x:Name="Log" FontFamily="Cascadia Mono, Consolas" FontSize="12" Foreground="{StaticResource Muted}" TextWrapping="Wrap"/>
+                        </ScrollViewer>
+                    </Border>
+                </DockPanel>
+
+                <!-- Navegación -->
+                <DockPanel Grid.Row="2" Margin="0,16,0,0" LastChildFill="False">
+                    <CheckBox x:Name="LaunchAfter" DockPanel.Dock="Left" Content="Abrir OmniHub al terminar" IsChecked="True" Visibility="Collapsed"/>
+                    <Button x:Name="NextBtn" DockPanel.Dock="Right" Style="{StaticResource AccentButton}" Content="Empezar" Padding="26,10" Margin="0" Click="Next_Click"/>
+                    <Button x:Name="BackBtn" DockPanel.Dock="Right" Content="Atrás" Padding="20,10" Margin="0,0,10,0" Click="Back_Click" Visibility="Collapsed"/>
+                </DockPanel>
+            </Grid>
+        </Grid>
+    </Border>
+</Window>
