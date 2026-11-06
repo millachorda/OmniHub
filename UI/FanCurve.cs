@@ -4,6 +4,7 @@ using System.Windows.Controls;
 using System.Windows.Input;
 using System.Windows.Media;
 using System.Windows.Shapes;
+using System.Windows.Threading;
 using OmniHub.Core;
 using OmniHub.Services;
 
@@ -96,7 +97,7 @@ public partial class MainWindow
                 var e = new Ellipse { Width = 18, Height = 18, Fill = Brushes.White, Stroke = cpu ? cpuBrush : gpuBrush, StrokeThickness = 3, Cursor = Cursors.SizeAll, ToolTip = $"{(cpu ? "CPU" : "GPU")} · intervalo {i + 1}" };
                 int idx = i; bool isCpu = cpu;
                 e.MouseLeftButtonDown += (_, ev) => { e.CaptureMouse(); ev.Handled = true; };
-                e.MouseLeftButtonUp += (_, _) => e.ReleaseMouseCapture();
+                e.MouseLeftButtonUp += (_, _) => { e.ReleaseMouseCapture(); CommitCurve(); };
                 e.MouseMove += (_, ev) =>
                 {
                     if (!e.IsMouseCaptured) return;
@@ -125,18 +126,19 @@ public partial class MainWindow
         });
 
         // Leyenda
-        var legend = new StackPanel { VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(12, 0, 0, 0) };
+        var legend = new StackPanel { Orientation = Orientation.Horizontal, Margin = new Thickness(44, 0, 0, 0) };
         foreach (var (txt, br, dash) in new[] { ("GPU", (Brush)gpuBrush, false), ("CPU", cpuBrush, false), ("Actual CPU", nowBrush, false), ("Actual GPU", nowBrush, true) })
         {
-            var row = new StackPanel { Orientation = Orientation.Horizontal, Margin = new Thickness(0, 4, 0, 4) };
+            var row = new StackPanel { Orientation = Orientation.Horizontal, Margin = new Thickness(0, 4, 22, 4) };
             row.Children.Add(dash ? new Rectangle { Width = 12, Height = 2, Fill = br, VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(0, 0, 8, 0) }
                                   : new Ellipse { Width = 8, Height = 8, Fill = br, VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(2, 0, 10, 0) });
             row.Children.Add(Sub(txt, 12));
             legend.Children.Add(row);
         }
-        var chartRow = new StackPanel { Orientation = Orientation.Horizontal };
-        chartRow.Children.Add(new Viewbox { Child = canvas, MaxWidth = 640, Stretch = Stretch.Uniform });
+        // La gráfica ocupa todo el ancho disponible (se escala), con la leyenda a la derecha
+        var chartRow = new StackPanel { Margin = new Thickness(0, 10, 0, 6) };
         chartRow.Children.Add(legend);
+        chartRow.Children.Add(new Viewbox { Child = canvas, MaxHeight = 420, Stretch = Stretch.Uniform, HorizontalAlignment = HorizontalAlignment.Left });
 
         // ---------------- Panel izquierdo ----------------
         var rpm = new TextBlock { FontSize = 46, FontWeight = FontWeights.Light, Foreground = cpuBrush };
@@ -163,7 +165,8 @@ public partial class MainWindow
                 SaveSoon();
             });
             cb.Margin = new Thickness(0, 0, 18, 6);
-            cb.ToolTip = ch.Hardware;
+            cb.Width = 230; // columnas iguales; el nombre completo cabe y si no, se ve al pasar el ratón
+            cb.ToolTip = $"{ch.Name} · {ch.Hardware}";
             fans.Children.Add(cb);
         }
         if (controllable.Count == 0) fans.Children.Add(Sub("No hay ventiladores controlables (instala el módulo de sensores).", 12));
@@ -205,6 +208,7 @@ public partial class MainWindow
                         var cc = isCpu ? _draftCpu! : _draftGpu!;
                         cc[ii][kk] = Math.Clamp(v, 0, 100);
                         Redraw();
+                        CommitCurve();
                     };
                     // Al salir de la casilla se corrige igual que al arrastrar: entre el punto anterior y el siguiente
                     box.LostFocus += (_, _) =>
@@ -215,6 +219,7 @@ public partial class MainWindow
                         cc[ii][kk] = Math.Clamp(cc[ii][kk], Math.Min(lo, hi), Math.Max(lo, hi));
                         box.Text = $"{cc[ii][kk]:0}";
                         Redraw();
+                        CommitCurve();
                     };
                     boxes[(cpu, i, k)] = box;
                     Cell(box, col++);
@@ -224,55 +229,59 @@ public partial class MainWindow
             }
         }
 
-        var addBtn = Btn("+ Añadir intervalo", () => { AddInterval(); Refresh(); });
+        var addBtn = Btn("+ Añadir intervalo", () => { AddInterval(); CommitCurve(); Refresh(); });
         addBtn.IsEnabled = rows < MaxIntervals;
-        var remBtn = Btn("− Quitar intervalo", () => { RemoveInterval(rows - 1); Refresh(); });
+        var remBtn = Btn("− Quitar intervalo", () => { RemoveInterval(rows - 1); CommitCurve(); Refresh(); });
         remBtn.IsEnabled = rows > MinIntervals;
-        var intervalBtns = Row(addBtn, remBtn, Sub($"  Entre {MinIntervals} y {MaxIntervals} intervalos", 12));
-        intervalBtns.Margin = new Thickness(0, 6, 0, 0);
-
-        var left = Stack(new TextBlock { Text = "Ventiladores", FontSize = 15, FontWeight = FontWeights.SemiBold, Foreground = B("Text") }, rpmRow, fans, table, intervalBtns);
-
-        // ---------------- Botones ----------------
-        var buttons = new StackPanel { Orientation = Orientation.Horizontal, HorizontalAlignment = HorizontalAlignment.Right, Margin = new Thickness(0, 12, 0, 0) };
         var def = Btn("Predeterminado", () =>
         {
             _draftCpu = Presets.DefaultCpuCurve(); _draftGpu = Presets.DefaultGpuCurve();
-            Refresh();
+            CommitCurve(); Refresh();
         });
-        var save = Btn("Guardar", () =>
-        {
-            // Cada curva ordenada por temperatura, sin puntos repetidos
-            foreach (var c in new[] { _draftCpu!, _draftGpu! })
-            {
-                Array.Sort(c, (a, b) => a[0].CompareTo(b[0]));
-                for (int i = 1; i < c.Length; i++)
-                {
-                    if (c[i][0] <= c[i - 1][0]) c[i][0] = Math.Min(100, c[i - 1][0] + 1);
-                    if (c[i][1] < c[i - 1][1]) c[i][1] = c[i - 1][1]; // la velocidad nunca baja al subir la temperatura
-                }
-            }
-            St.CpuCurve = Copy(_draftCpu!); St.GpuCurve = Copy(_draftGpu!);
-            St.FanPreset = "Personalizado"; St.Save();
-            Toast("Curva guardada y aplicada");
-            Refresh();
-        }, true);
-        buttons.Children.Add(def); buttons.Children.Add(save);
+        var intervalBtns = Row(addBtn, remBtn, def, Sub($"  Entre {MinIntervals} y {MaxIntervals} intervalos · se guarda solo", 12));
+        intervalBtns.Margin = new Thickness(0, 6, 0, 0);
 
-        var grid = new Grid();
-        grid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
-        grid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(24) });
-        grid.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
-        grid.Children.Add(left);
-        Grid.SetColumn(chartRow, 2); grid.Children.Add(chartRow);
+        // De arriba abajo: RPM y ventiladores · gráfica a todo lo ancho · tabla de intervalos
+        var tableScroll = new ScrollViewer { Content = table, HorizontalScrollBarVisibility = ScrollBarVisibility.Auto, VerticalScrollBarVisibility = ScrollBarVisibility.Disabled };
 
         Redraw();
         var title = H2("Curva personalizada"); title.Foreground = B("Accent"); title.FontSize = 18;
-        bool dirty = !Same(_draftCpu!, St.CpuCurve) || !Same(_draftGpu!, St.GpuCurve);
-        return Card(title, grid, buttons,
-            Sub("Arrastra los puntos o escribe los valores. Por debajo del primer intervalo se mantiene su velocidad y por encima del último, la última. " +
-                "Los ventiladores del sistema siguen la curva que pida más aire (CPU o GPU); los de la gráfica, solo la de la GPU. " +
-                (dirty ? "Tienes cambios sin guardar." : ""), 12));
+        return Card(title,
+            new TextBlock { Text = "Ventiladores", FontSize = 15, FontWeight = FontWeights.SemiBold, Foreground = B("Text") },
+            rpmRow, fans, chartRow, tableScroll, intervalBtns,
+            Sub("Arrastra los puntos o escribe los valores: cada cambio se guarda y se aplica al momento. Por debajo del primer intervalo se mantiene su velocidad y por encima del último, la última. " +
+                "Los ventiladores del sistema siguen la curva que pida más aire (CPU o GPU); los de la gráfica, solo la de la GPU.", 12));
+    }
+
+    DispatcherTimer? _curveTimer;
+
+    /// <summary>Guarda y aplica la curva (ordenada y sin puntos que se crucen) poco después del último cambio.</summary>
+    void CommitCurve()
+    {
+        _curveTimer ??= new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(400) };
+        _curveTimer.Stop();
+        _curveTimer.Tick -= CurveTick; _curveTimer.Tick += CurveTick;
+        _curveTimer.Start();
+    }
+
+    void CurveTick(object? s, EventArgs e)
+    {
+        _curveTimer!.Stop();
+        static double[][] Normalize(double[][] src)
+        {
+            var c = Copy(src);
+            Array.Sort(c, (a, b) => a[0].CompareTo(b[0]));
+            for (int i = 1; i < c.Length; i++)
+            {
+                if (c[i][0] <= c[i - 1][0]) c[i][0] = Math.Min(100, c[i - 1][0] + 1);
+                if (c[i][1] < c[i - 1][1]) c[i][1] = c[i - 1][1]; // la velocidad nunca baja al subir la temperatura
+            }
+            return c;
+        }
+        St.CpuCurve = Normalize(_draftCpu!);
+        St.GpuCurve = Normalize(_draftGpu!);
+        St.FanPreset = "Personalizado";
+        St.Save();
     }
 
     const int MinIntervals = 2, MaxIntervals = 8;
