@@ -30,7 +30,6 @@
                     <RadioButton Style="{StaticResource Nav}" Tag="Rendimiento" Content="⚡   Rendimiento" Checked="Nav_Checked"/>
                     <RadioButton Style="{StaticResource Nav}" Tag="Fans" Content="❋   Ventiladores" Checked="Nav_Checked"/>
                     <RadioButton Style="{StaticResource Nav}" Tag="Monitor" Content="▤   Monitor" Checked="Nav_Checked"/>
-                    <RadioButton Style="{StaticResource Nav}" Tag="Mouse" Content="⌖   Ratón" Checked="Nav_Checked"/>
                     <RadioButton Style="{StaticResource Nav}" Tag="Audio" Content="♫   Audio" Checked="Nav_Checked"/>
                     <RadioButton Style="{StaticResource Nav}" Tag="Apps" Content="⧉   Integraciones" Checked="Nav_Checked"/>
                     <RadioButton Style="{StaticResource Nav}" Tag="Perfiles" Content="☰   Perfiles" Checked="Nav_Checked"/>

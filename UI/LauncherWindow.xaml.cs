@@ -56,9 +56,6 @@ public partial class LauncherWindow : Window
         var eq = Components.EqualizerApo.IsInstalled();
         Row("Ecualizador", eq, eq ? "Módulo listo" : "Falta el módulo");
 
-        var mice = await Task.Run(() => { try { return HidppDevice.Discover(); } catch { return new List<HidppDevice>(); } });
-        Row("Ratón", true, mice.Count > 0 ? mice[0].Name + " (avanzado)" : "Cualquier ratón (botones/sensibilidad)");
-        foreach (var m in mice) m.Dispose();
 
         var audio = Hub.Audio.DefaultOutput?.FriendlyName ?? "—";
         Row("Salida de audio", true, audio);

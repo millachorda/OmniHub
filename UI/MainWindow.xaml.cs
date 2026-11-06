@@ -72,7 +72,6 @@ public partial class MainWindow : Window
                 "Fans" => PageFans(),
                 "Rendimiento" => PagePerformance(),
                 "Monitor" => PageMonitor(),
-                "Mouse" => PageMouse(),
                 "Audio" => PageAudio(),
                 "Apps" => PageIntegrations(),
                 "Perfiles" => PageProfiles(),
@@ -152,7 +151,7 @@ public partial class MainWindow : Window
                 prof.DropDownItems.Add(p.Name, null, (_, _) => Dispatcher.Invoke(() => Hub.ApplyProfile(pp)));
             }
         };
-        menu.Items.Add("Silenciar / activar micrófono", null, (_, _) => Dispatcher.Invoke(() => Actions.Run("Silenciar micrófono (sistema)", true)));
+        menu.Items.Add("Silenciar / activar micrófono", null, (_, _) => Dispatcher.Invoke(() => Toast(Hub.Audio.ToggleMicMute() ? "Micrófono silenciado" : "Micrófono activo")));
         menu.Items.Add(new System.Windows.Forms.ToolStripSeparator());
         menu.Items.Add("Salir", null, (_, _) => Dispatcher.Invoke(ExitApp));
         _tray.ContextMenuStrip = menu;

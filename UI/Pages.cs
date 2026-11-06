@@ -66,7 +66,6 @@ public partial class MainWindow
             var rpm = Hub.Fans.Channels.Where(c => c.RpmValue > 0).Select(c => c.RpmValue!.Value).ToList();
             return Hub.Fans.Status + (rpm.Count > 0 ? $" · media {rpm.Average():0} RPM" : "");
         });
-        Line("Ratón", () => Hub.Mouse.Active is { } m ? $"{m.Name}" : "Ratón genérico (botones y sensibilidad)");
         Line("Audio", () => Hub.Audio.DefaultOutput?.FriendlyName ?? "—");
 
         return Stack(
@@ -78,7 +77,7 @@ public partial class MainWindow
                 Stat("Uso GPU", () => $"{Hub.Fans.GpuLoad:0} %")),
             Cols(2,
                 MediaCard(),
-                Card(H2("Perfiles rápidos"), quick, Sub("Cambian luces, ventiladores, DPI y ecualizador de golpe. Edítalos en «Perfiles».", 12))),
+                Card(H2("Perfiles rápidos"), quick, Sub("Cambian luces, ventiladores y ecualizador de golpe. Edítalos en «Perfiles».", 12))),
             Card(H2("Estado"), devs));
     }
 
@@ -359,95 +358,6 @@ public partial class MainWindow
     }
 
     // =====================================================================
-    UIElement MouseSensitivityPage()
-    {
-        var root = new StackPanel();
-
-
-        root.Children.Add(Card(H2("Sensibilidad de Windows (cualquier ratón)"),
-            LabeledSlider("Velocidad del puntero", 1, 20, MouseService.PointerSpeed, v => MouseService.PointerSpeed = (int)v),
-            Toggle("Aceleración (Mejorar precisión del puntero) — desactívala para juegos", MouseService.Acceleration, v => MouseService.Acceleration = v),
-            LabeledSlider("Líneas por rueda", 1, 20, MouseService.ScrollLines, v => MouseService.ScrollLines = (int)v)));
-
-        if (Hub.Mouse.Active is { } m)
-        {
-            var (min, max, step) = m.DpiRange();
-            var cur = m.GetDpi();
-            var batt = Sub("");
-            _live.Add(() => { });
-            Task.Run(() => m.Battery()).ContinueWith(t => Dispatcher.BeginInvoke(() => batt.Text = t.Result is { } b ? $"Batería: {b} %" : "Ratón con cable"));
-            var rates = m.ReportRates();
-            var curRate = m.GetReportRate();
-            var stages = new TextBox { Width = 260, Text = string.Join(", ", St.DpiStages) };
-            var card = Card(H2(m.Name), batt,
-                LabeledSlider("DPI", min, Math.Min(max, 26000), cur > 0 ? cur : 1600, v => Hub.Mouse.SetDpi((int)v), "0", "", step),
-                LabeledSlider("DPI francotirador", min, 3200, St.SniperDpi, v => { St.SniperDpi = (int)v; SaveSoon(); }, "0", "", step),
-                Sub("Niveles de DPI para «Ciclar DPI» (separados por comas)"),
-                Row(stages, Btn("Guardar niveles", () =>
-                {
-                    St.DpiStages = stages.Text.Split(',').Select(s => int.TryParse(s.Trim(), out var v) ? v : 0).Where(v => v >= min && v <= max).ToList();
-                    St.Save(); Toast("Niveles guardados");
-                })));
-            if (rates.Length > 0)
-                ((StackPanel)card.Child).Children.Add(Row(Sub("Tasa de sondeo  "), Combo(rates.Select(r => $"{r} Hz"), $"{curRate} Hz", v =>
-                {
-                    var err = m.SetReportRate(int.Parse(v.Split(' ')[0]));
-                    Toast(err == null ? $"Tasa: {v}" : "No se pudo: " + err);
-                }, 140)));
-            if (m.HasOnboard)
-                ((StackPanel)card.Child).Children.Add(Toggle("Modo software (los ajustes los manda OmniHub en vez de la memoria del ratón)", m.HostMode == true, v => { m.HostMode = v; Toast(v ? "Modo software" : "Modo memoria interna"); }));
-            ((StackPanel)card.Child).Children.Add(Sub("Las luces del ratón se controlan en «Iluminación». Si G HUB está abierto puede deshacer estos cambios.", 12));
-            root.Children.Add(card);
-        }
-        else
-        {
-            root.Children.Add(Card(H2("DPI por hardware"),
-                Sub("No he encontrado un ratón con DPI ajustable por software estándar (Logitech HID++). Con cualquier otro ratón funcionan la sensibilidad, los botones y las luces; el DPI se cambia con su botón físico."),
-                Btn("Buscar de nuevo", () => { Hub.Mouse.Discover(); Refresh(); })));
-        }
-
-        return root;
-    }
-
-    /// <summary>Fila «botón → acción», con caja de teclas para atajos personalizados.</summary>
-    UIElement ButtonRow(string label, string key, Action? changed)
-    {
-        var current = St.ButtonMap.TryGetValue(key, out var a) ? a : Actions.Default;
-        var g = new Grid { Margin = new Thickness(0, 3, 0, 3) };
-        g.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(220) });
-        g.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(300) });
-        g.ColumnDefinitions.Add(new ColumnDefinition());
-        var l = Txt(label); l.VerticalAlignment = VerticalAlignment.Center;
-        var keys = new TextBox { Width = 170, Text = Actions.KeysOf(current), Visibility = Actions.IsCustom(current) ? Visibility.Visible : Visibility.Collapsed, ToolTip = "Ej.: Ctrl+Shift+M, F13, V, Alt+Espacio" };
-        var save = Btn("Guardar", () => { }, true);
-        save.Visibility = keys.Visibility;
-        var custom = new StackPanel { Orientation = Orientation.Horizontal };
-        custom.Children.Add(keys); custom.Children.Add(save);
-        void Store(string label2)
-        {
-            var k = keys.Text.Trim();
-            var pre = Actions.Prefix(label2); St.ButtonMap[key] = pre.Length > 0 ? pre + k : label2;
-            SaveSoon(); changed?.Invoke();
-        }
-        var c = Combo(Actions.All, Actions.LabelOf(current), v =>
-        {
-            bool isCustom = v is Actions.HotkeyLabel or Actions.HoldLabel or Actions.MacroLabel;
-            keys.Width = v == Actions.MacroLabel ? 320 : 170;
-            keys.ToolTip = v == Actions.MacroLabel ? "Pasos separados por comas: atajos, esperas en ms y texto:… Ej.: Ctrl+C, 100, Alt+Tab, Ctrl+V" : "Ej.: Ctrl+Shift+M, F13, V, Alt+Espacio";
-            keys.Visibility = save.Visibility = isCustom ? Visibility.Visible : Visibility.Collapsed;
-            if (isCustom && keys.Text.Trim().Length == 0) { keys.Focus(); return; }
-            Store(v);
-        }, 280);
-        save.Click += (_, _) =>
-        {
-            if ((string)c.SelectedItem != Actions.MacroLabel && Actions.Parse(keys.Text).Count == 0) { Toast("Atajo no válido (ej.: Ctrl+Shift+M)"); return; }
-            Store((string)c.SelectedItem); Toast($"{label}: {keys.Text.Trim()}");
-        };
-        Grid.SetColumn(c, 1); Grid.SetColumn(custom, 2);
-        g.Children.Add(l); g.Children.Add(c); g.Children.Add(custom);
-        return g;
-    }
-
     // =====================================================================
     UIElement PageAudio()
     {
@@ -630,7 +540,7 @@ public partial class MainWindow
 
         root.Children.Add(Cols(2, MediaCard(), Card(H2("Música y luces"),
             Toggle("Las luces siguen el color de la carátula", St.MediaLights, v => { St.MediaLights = v; SaveSoon(); }),
-            Sub("Funciona con Spotify, YouTube en el navegador, Apple Music, VLC… cualquier app que aparezca en los controles multimedia de Windows. Asigna «Reproducir / Pausa» o «Siguiente pista» a un botón del ratón en «Ratón».", 12))));
+            Sub("Funciona con Spotify, YouTube en el navegador, Apple Music, VLC… cualquier app que aparezca en los controles multimedia de Windows.", 12))));
 
         return root;
     }
@@ -638,7 +548,7 @@ public partial class MainWindow
     // =====================================================================
     UIElement PageProfiles()
     {
-        var root = Stack(Header("Perfiles", "Guarda combinaciones de luces, ventiladores, DPI y ecualizador"));
+        var root = Stack(Header("Perfiles", "Guarda combinaciones de luces, ventiladores y ecualizador"));
         foreach (var p in St.Profiles.ToList())
         {
             var pp = p;
@@ -658,7 +568,7 @@ public partial class MainWindow
             DockPanel.SetDock(btns, Dock.Right);
             dp.Children.Add(btns);
             var title = H2((p.Name == Hub.ActiveProfile ? "● " : "") + p.Name);
-            dp.Children.Add(Stack(title, Sub($"Luces: {p.Lighting.Effect} · Ventiladores: {p.FanPreset} · EQ: {p.EqPreset}" + (p.Dpi > 0 ? $" · {p.Dpi} DPI" : ""), 12)));
+            dp.Children.Add(Stack(title, Sub($"Luces: {p.Lighting.Effect} · Ventiladores: {p.FanPreset} · EQ: {p.EqPreset}", 12)));
             root.Children.Add(Card(dp));
         }
         var nameBox = new TextBox { Width = 240 };
@@ -692,7 +602,7 @@ public partial class MainWindow
                     Btn("Abrir carpeta de datos", () => SystemTools.OpenUrl(AppInfo.DataDir)),
                     Btn("Volver a escanear dispositivos", async () =>
                     {
-                        await Task.Run(Hub.Mouse.Discover); Hub.Rgb.Refresh(); Toast("Dispositivos actualizados");
+                        Hub.Rgb.Refresh(); await Task.CompletedTask; Toast("Dispositivos actualizados");
                     }),
                     Btn("Desinstalar OmniHub", () =>
                     {
@@ -714,6 +624,6 @@ public partial class MainWindow
                     }, true),
                     Btn("Abrir el repositorio", () => SystemTools.OpenUrl(Updater.RepoUrl)))),
             Card(H2("Acerca de"),
-                Sub("OmniHub une en una app el control de luces, ventiladores, ratón y audio de cualquier marca con sus módulos integrados, basados en proyectos abiertos (OpenRGB, LibreHardwareMonitor + PawnIO, Equalizer APO, AutoEq) y HID++ para ratones Logitech. Se instalan y se quitan junto con OmniHub. Si algo no aparece, ese dispositivo aún no es compatible.")));
+                Sub("OmniHub une en una app el control de luces, ventiladores, rendimiento y audio de cualquier marca con sus módulos integrados, basados en proyectos abiertos (OpenRGB, LibreHardwareMonitor + PawnIO, Equalizer APO, AutoEq). Se instalan y se quitan junto con OmniHub. Si algo no aparece, ese dispositivo aún no es compatible.")));
     }
 }

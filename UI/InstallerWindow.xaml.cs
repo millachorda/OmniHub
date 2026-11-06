@@ -108,7 +108,7 @@ public partial class InstallerWindow : Window
         CompList.Children.Add(new TextBlock
         {
             Style = (Style)FindResource("Sub"), FontSize = 12,
-            Text = "Ratones Logitech (DPI, tasa de sondeo, batería), Spotify/multimedia, OBS y Discord no necesitan nada extra: van integrados en OmniHub."
+            Text = "Rendimiento, monitor de hardware y Spotify/multimedia no necesitan nada extra: van integrados en OmniHub."
         });
     }
 

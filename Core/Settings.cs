@@ -7,7 +7,7 @@ namespace OmniHub.Core;
 public static class AppInfo
 {
     public const string Name = "OmniHub";
-    public const string Version = "1.0.3";
+    public const string Version = "1.0.4";
     public const string UninstallKey = @"SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall\OmniHub";
 
     public static string DefaultInstallDir =>
@@ -71,15 +71,8 @@ public class Profile
     public string Name { get; set; } = "Perfil";
     public LightingState Lighting { get; set; } = new();
     public string FanPreset { get; set; } = "Equilibrado";
-    public int Dpi { get; set; } = 0;              // 0 = no tocar
     public double[] Eq { get; set; } = new double[10];
     public string EqPreset { get; set; } = "Plano";
-}
-
-public class AppRule
-{
-    public string Process { get; set; } = "";   // ej. "cs2" o "valorant"
-    public string Profile { get; set; } = "";
 }
 
 public class Settings
@@ -90,6 +83,7 @@ public class Settings
     public bool StartWithWindows { get; set; }
     public bool CloseVendorApps { get; set; }
     public string? OpenRgbPath { get; set; }
+    public bool MouseRestored { get; set; }      // el ratón se devolvió a su memoria interna (una vez)
 
     // Estado actual
     public LightingState Lighting { get; set; } = new();
@@ -102,12 +96,6 @@ public class Settings
     public bool GpuZeroFan { get; set; }
     public double ZeroFanTemp { get; set; } = 50;
 
-    // Ratón
-    public int SniperDpi { get; set; } = 400;
-    public List<int> DpiStages { get; set; } = new() { 800, 1600, 3200 };
-    public Dictionary<string, string> ButtonMap { get; set; } = new();  // botón -> acción
-    public Dictionary<string, string> Macros { get; set; } = new();     // nombre -> pasos
-    public Dictionary<string, int> MouseMapPos { get; set; } = new();   // punto del mapa -> nº de botón (calibración)
 
     // Audio
     public double[] Eq { get; set; } = new double[10];
@@ -128,20 +116,9 @@ public class Settings
 
     // Integraciones
     public bool MediaLights { get; set; }
-    public bool ObsEnabled { get; set; }
-    public string ObsHost { get; set; } = "127.0.0.1";
-    public int ObsPort { get; set; } = 4455;
-    public string ObsPassword { get; set; } = "";
-    public bool ObsRecordingLights { get; set; } = true;
-    public bool DiscordPresence { get; set; }
-    public string DiscordClientId { get; set; } = "";
-    public string DiscordMuteHotkey { get; set; } = "Ctrl+Shift+M";
 
     // Perfiles
     public List<Profile> Profiles { get; set; } = new();
-    public List<AppRule> AppRules { get; set; } = new();
-    public bool AutoProfiles { get; set; }
-    public string DefaultProfile { get; set; } = "";
 
     static string FilePath => Path.Combine(AppInfo.DataDir, "settings.json");
     static readonly JsonSerializerOptions Opts = new() { WriteIndented = true };

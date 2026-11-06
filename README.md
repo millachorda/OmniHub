@@ -1,7 +1,7 @@
 <p align="center"><img src="Assets/logo.png" width="110" alt="OmniHub"></p>
 
 <h1 align="center">OmniHub</h1>
-<p align="center"><b>Un centro de control universal para tu PC</b>: luces RGB, ventiladores, ratón, sonido e integraciones en una sola app, con cualquier marca de hardware.</p>
+<p align="center"><b>Un centro de control universal para tu PC</b>: luces RGB, ventiladores, rendimiento y sonido en una sola app, con cualquier marca de hardware.</p>
 
 <p align="center"><a href="https://github.com/millachorda/OmniHub/releases/latest"><b>⬇ Descargar OmniHub-Setup.exe</b></a></p>
 
@@ -13,9 +13,10 @@
 |---|---|---|
 | **Iluminación** | Estático, respirar, arcoíris, ola, ciclo, temperatura de la CPU, color de la carátula de la música | Placas MSI/ASUS/Gigabyte/ASRock, RAM, GPU, ratones, teclados, auriculares, hubs… (todo lo que soporta [OpenRGB](https://openrgb.org)) |
 | **Ventiladores** | Modos Inteligente / Rendimiento / Silencioso / Personalizado (curva editable), ventilador cero en la GPU, Turbo y control por canal | Cualquier placa base y gráfica que soporte [LibreHardwareMonitor](https://github.com/LibreHardwareMonitor/LibreHardwareMonitor) + [PawnIO](https://pawnio.eu) |
-| **Ratón** | Velocidad, aceleración, rueda y reasignación de botones (cualquier ratón); DPI, francotirador, niveles, tasa de sondeo y batería por hardware | Cualquier ratón · Logitech por HID++ sin G HUB |
-| **Audio** | Dispositivo por defecto, volumen, micro, ecualizador de 10 bandas con presets y perfiles [AutoEq](https://autoeq.app) | Cualquier auricular o altavoz (motor: [Equalizer APO](https://sourceforge.net/projects/equalizerapo/)) |
-| **Integraciones** | Spotify y cualquier reproductor, OBS (grabar, emitir, escenas, luces rojas al grabar), Discord (Rich Presence, silenciar), lanzador de apps y **perfiles automáticos por app** | — |
+| **Rendimiento** | Escenarios Máximo rendimiento / Equilibrado / Silencioso (plan de energía + ventiladores) y Modo juego de Windows | Cualquier PC con Windows 10/11 |
+| **Monitor** | Todos los sensores en vivo: temperaturas, frecuencias, voltajes, consumo, uso y memoria | Lo que soporte LibreHardwareMonitor |
+| **Audio** | Dispositivo por defecto, volumen, micro, corrección [AutoEq](https://autoeq.app) automática, audio espacial, efectos y ecualizador de 10 bandas | Cualquier auricular o altavoz (motor: [Equalizer APO](https://sourceforge.net/projects/equalizerapo/)) |
+| **Integraciones** | Spotify y cualquier reproductor: carátula, controles y luces con el color de la carátula | — |
 
 ## Instalación
 

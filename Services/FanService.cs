@@ -105,6 +105,7 @@ public sealed class FanService : IDisposable
         if (CpuTemp <= 0) CpuTemp = PickTemp(new[] { HardwareType.Motherboard, HardwareType.SuperIO, HardwareType.EmbeddedController }, "CPU Core", "CPU Socket", "CPU");
         if (CpuTemp <= 0 && _tick++ % 5 == 0) _acpiTemp = AcpiTemp();
         if (CpuTemp <= 0) CpuTemp = _acpiTemp;
+        if (CpuTemp <= 0 && !_reported && _tick > 3) { _reported = true; WriteReport(); }
         GpuTemp = PickTemp(new[] { HardwareType.GpuNvidia, HardwareType.GpuAmd, HardwareType.GpuIntel }, "GPU Core", "GPU Hot Spot", "Core");
         CpuLoad = PickLoad(HardwareType.Cpu, "CPU Total");
         GpuLoad = PickLoad(new[] { HardwareType.GpuNvidia, HardwareType.GpuAmd, HardwareType.GpuIntel }, "GPU Core", "D3D 3D");
@@ -159,6 +160,23 @@ public sealed class FanService : IDisposable
     double PickTemp(HardwareType t, params string[] names) => PickTemp(new[] { t }, names);
     int _tick;
     double _acpiTemp;
+    bool _reported;
+
+    /// <summary>Informe completo de sensores para diagnosticar (se guarda en %AppData%\OmniHub\sensores.txt).</summary>
+    public string WriteReport()
+    {
+        var path = System.IO.Path.Combine(AppInfo.DataDir, "sensores.txt");
+        try
+        {
+            var admin = new System.Security.Principal.WindowsPrincipal(System.Security.Principal.WindowsIdentity.GetCurrent())
+                .IsInRole(System.Security.Principal.WindowsBuiltInRole.Administrator);
+            var head = $"OmniHub {AppInfo.Version} · {DateTime.Now:yyyy-MM-dd HH:mm:ss} · admin={admin} · PawnIO={Components.PawnIO.IsInstalled()}\n" +
+                       $"CPU={CpuTemp:0.0} GPU={GpuTemp:0.0}\n\n";
+            System.IO.File.WriteAllText(path, head + _pc.GetReport());
+        }
+        catch (Exception e) { try { System.IO.File.WriteAllText(path, "Error: " + e); } catch { } }
+        return path;
+    }
 
     /// <summary>Temperatura de la zona térmica ACPI (aproximada, pero funciona sin drivers en casi todos los PC).</summary>
     static double AcpiTemp()

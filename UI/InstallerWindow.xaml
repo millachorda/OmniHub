@@ -18,7 +18,7 @@
                         <Image Source="/Assets/logo.png" Width="40" Height="40"/>
                         <TextBlock Text="OmniHub" FontSize="22" FontWeight="SemiBold" VerticalAlignment="Center" Margin="10,0,0,0"/>
                     </StackPanel>
-                    <TextBlock DockPanel.Dock="Bottom" Style="{StaticResource Sub}" FontSize="11" Text="v1.0.0 · Luces, ventiladores, ratón, audio e integraciones en una sola app."/>
+                    <TextBlock DockPanel.Dock="Bottom" Style="{StaticResource Sub}" FontSize="11" Text="Luces, ventiladores, rendimiento y audio en una sola app."/>
                     <StackPanel x:Name="Steps" Margin="0,36,0,0">
                         <TextBlock Text="1  Bienvenida" Margin="0,0,0,14"/>
                         <TextBlock Text="2  Tu hardware" Margin="0,0,0,14"/>
@@ -41,7 +41,7 @@
                 <StackPanel x:Name="P1" Grid.Row="1" VerticalAlignment="Center">
                     <TextBlock Style="{StaticResource H1}" FontSize="32" Text="Un centro de control para todo tu PC"/>
                     <TextBlock Style="{StaticResource Sub}" FontSize="15" Margin="0,8,0,24"
-                               Text="OmniHub reúne en una sola app la iluminación RGB, los ventiladores, el ratón, el sonido de tus auriculares y las integraciones con Spotify, Discord y OBS — sea cual sea la marca de tu placa base, gráfica o periféricos."/>
+                               Text="OmniHub reúne en una sola app la iluminación RGB, los ventiladores, el rendimiento y el sonido de tus auriculares — sea cual sea la marca de tu placa base, gráfica o periféricos."/>
                     <Border Style="{StaticResource CardBox}">
                         <StackPanel>
                             <TextBlock Style="{StaticResource H2}" Text="Qué va a pasar"/>

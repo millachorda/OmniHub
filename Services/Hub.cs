@@ -1,6 +1,3 @@
-using System.Diagnostics;
-using System.Runtime.InteropServices;
-using System.Text;
 using OmniHub.Core;
 
 namespace OmniHub.Services;
@@ -10,24 +7,20 @@ public static class Hub
 {
     public static RgbService Rgb { get; } = new();
     public static FanService Fans { get; } = new();
-    public static MouseService Mouse { get; } = new();
     public static AudioService Audio { get; } = new();
     public static MediaService Media { get; } = new();
-    public static ObsService Obs { get; } = new();
-    public static DiscordService Discord { get; } = new();
 
     public static Action? ShowMain;
-    /// <summary>Modo de prueba (--test): solo lectura, no toca el ratón ni se bloquea por instancia única.</summary>
+    /// <summary>Modo de prueba (--test): no se bloquea por instancia única.</summary>
     public static bool TestMode;
     public static Action<string>? ToastHandler;
     public static event Action? Ticked;
     public static string ActiveProfile { get; private set; } = "";
-    public static string AutoProfileReason { get; private set; } = "";
+    public static string AutoProfileReason => "";
 
     static System.Windows.Threading.DispatcherTimer? _timer;
     static bool _started;
     static int _tick;
-    static string _autoApplied = "";
 
     public static void Toast(string text) => ToastHandler?.Invoke(text);
 
@@ -43,20 +36,17 @@ public static class Hub
             await Task.Run(VendorApps.CloseAll);
         }
 
+        if (!TestMode) await Task.Run(RestoreMouseOnce);
+
         log?.Report("Leyendo sensores…");
         await Task.Run(Fans.Open);
         Rgb.CpuTemp = () => Fans.CpuTemp;
-
-        log?.Report("Buscando ratones…");
-        await Task.Run(Mouse.Discover);
-        if (!TestMode) Mouse.InstallHook();
 
         log?.Report("Conectando con multimedia…");
         await Media.InitAsync();
 
         log?.Report("Conectando iluminación…");
-        _ = Rgb.ConnectAsync(); // en segundo plano: OpenRGB puede tardar
-
+        _ = Rgb.ConnectAsync(); // en segundo plano: el módulo de iluminación puede tardar
 
         if (Audio.EqAvailable)
         {
@@ -67,6 +57,39 @@ public static class Hub
         _timer = new System.Windows.Threading.DispatcherTimer { Interval = TimeSpan.FromSeconds(1) };
         _timer.Tick += async (_, _) => await TickAsync();
         _timer.Start();
+    }
+
+    /// <summary>
+    /// OmniHub ya no gestiona el ratón. Las versiones anteriores (y G HUB) dejaban los botones G
+    /// desactivados en el propio ratón; aquí, una sola vez, se devuelve el ratón a su memoria
+    /// interna para que funcione solo, sin ningún programa. Si G HUB está abierto, no se toca.
+    /// </summary>
+    static void RestoreMouseOnce()
+    {
+        var st = Settings.Current;
+        if (st.MouseRestored) return;
+        if (System.Diagnostics.Process.GetProcessesByName("lghub").Length > 0 ||
+            System.Diagnostics.Process.GetProcessesByName("lghub_agent").Length > 0) return;
+        try
+        {
+            foreach (var d in HidppDevice.Discover())
+            {
+                try
+                {
+                    if (d.HasButtonSpy)
+                    {
+                        d.StopSpy();
+                        var n = Math.Min(16, d.ButtonCount);
+                        d.SetRemap(Enumerable.Range(1, 16).Select(i => (byte)(i <= n ? i : 0)).ToArray());
+                    }
+                    if (d.HasOnboard) d.HostMode = false; // modo memoria interna: los botones hacen lo suyo
+                }
+                finally { d.Dispose(); }
+            }
+        }
+        catch { }
+        st.MouseRestored = true;
+        st.Save();
     }
 
     static async Task TickAsync()
@@ -83,15 +106,6 @@ public static class Hub
         Ticked?.Invoke();
     }
 
-    static void UpdateOverride()
-    {
-        var st = Settings.Current;
-        Rgb.Override = st.ObsRecordingLights && (Obs.Recording || Obs.Streaming)
-            ? ((byte)255, (byte)0, (byte)30)
-            : null;
-        Rgb.Changed();
-    }
-
     // ---------- Perfiles ----------
     public static void ApplyProfile(Profile p, bool silent = false)
     {
@@ -103,7 +117,6 @@ public static class Hub
         st.EqPreset = p.EqPreset;
         st.Save();
         Rgb.Changed();
-        if (p.Dpi > 0) Mouse.SetDpi(p.Dpi);
         if (Audio.EqAvailable) Audio.ApplyEq(st.Eq, st.AutoEqFile);
         ActiveProfile = p.Name;
         if (!silent) Toast($"Perfil «{p.Name}» aplicado");
@@ -116,7 +129,6 @@ public static class Hub
         {
             Name = name, Lighting = Clone(st.Lighting), FanPreset = st.FanPreset,
             Eq = (double[])st.Eq.Clone(), EqPreset = st.EqPreset,
-            Dpi = Mouse.Active?.GetDpi() ?? 0,
         };
     }
 
@@ -126,38 +138,10 @@ public static class Hub
         DisabledDevices = new List<string>(l.DisabledDevices)
     };
 
-    [DllImport("user32.dll")] static extern IntPtr GetForegroundWindow();
-    [DllImport("user32.dll")] static extern uint GetWindowThreadProcessId(IntPtr h, out uint pid);
-
-    /// <summary>Perfil automático según la app en primer plano (juegos, OBS, Spotify…).</summary>
-    static void AutoProfile()
-    {
-        var st = Settings.Current;
-        string fg = "";
-        try
-        {
-            GetWindowThreadProcessId(GetForegroundWindow(), out var pid);
-            fg = Process.GetProcessById((int)pid).ProcessName;
-        }
-        catch { }
-        if (fg.Equals("OmniHub", StringComparison.OrdinalIgnoreCase)) return;
-        var rule = st.AppRules.FirstOrDefault(r => r.Process.Length > 0 && fg.Equals(r.Process.Replace(".exe", "", StringComparison.OrdinalIgnoreCase), StringComparison.OrdinalIgnoreCase));
-        var target = rule?.Profile ?? st.DefaultProfile;
-        if (string.IsNullOrEmpty(target) || target == _autoApplied) return;
-        var p = st.Profiles.FirstOrDefault(x => x.Name == target);
-        if (p == null) return;
-        _autoApplied = target;
-        AutoProfileReason = rule != null ? $"por {fg}" : "por defecto";
-        ApplyProfile(p, silent: false);
-    }
-
     public static void Shutdown()
     {
         _timer?.Stop();
         try { Fans.Dispose(); } catch { }
         try { Rgb.Dispose(); } catch { }
-        try { Mouse.Dispose(); } catch { }
-        try { Discord.Dispose(); } catch { }
-        try { Obs.Disconnect(); } catch { }
     }
 }
