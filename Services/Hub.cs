@@ -55,9 +55,6 @@ public static class Hub
         log?.Report("Conectando iluminación…");
         _ = Rgb.ConnectAsync(); // en segundo plano: OpenRGB puede tardar
 
-        if (st.ObsEnabled) _ = Obs.ConnectAsync();
-        Obs.Changed += UpdateOverride;
-        if (st.DiscordPresence) await Task.Run(Discord.Connect);
 
         if (Audio.EqAvailable)
         {
@@ -81,14 +78,6 @@ public static class Hub
         { st.Lighting.Effect = "Carátula de la música"; Rgb.Changed(); }
         if (Rgb.State.Effect == "Carátula de la música") Rgb.Changed();
 
-        if (st.AutoProfiles && _tick % 3 == 0) AutoProfile();
-        if (st.DiscordPresence && _tick % 15 == 0)
-        {
-            if (!Discord.Connected) await Task.Run(Discord.Connect);
-            var state = $"CPU {Fans.CpuTemp:0}°C · GPU {Fans.GpuTemp:0}°C";
-            Discord.SetActivity(ActiveProfile.Length > 0 ? $"Perfil: {ActiveProfile}" : "Centro de control del PC", state);
-        }
-        if (st.ObsEnabled && !Obs.Connected && _tick % 20 == 0) _ = Obs.ConnectAsync();
         Ticked?.Invoke();
     }
 

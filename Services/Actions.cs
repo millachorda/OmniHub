@@ -15,12 +15,20 @@ public static class Actions
         "Francotirador DPI (mantener)", "Ciclar DPI", "Turbo ventiladores (activar/parar)",
         "Reproducir / Pausa", "Siguiente pista", "Pista anterior",
         "Subir volumen", "Bajar volumen", "Silenciar sonido",
-        "Silenciar micrófono (sistema)", "Discord: silenciar micro",
-        "OBS: grabar / parar", "OBS: emitir / parar", "OBS: guardar repetición",
+        "Silenciar micrófono (sistema)",
+        "Discord: silenciar micro (Ctrl+Shift+M)", "Discord: ensordecer (Ctrl+Shift+D)",
+        HotkeyLabel, HoldLabel,
         "Copiar", "Pegar", "Deshacer", "Atrás", "Adelante",
         "Mostrar escritorio", "Captura de pantalla", "Administrador de tareas",
         "Abrir OmniHub",
     };
+
+    // Acciones con tecla elegida por el usuario: se guardan como "Atajo: Ctrl+Shift+M" o "Mantener: V"
+    public const string HotkeyLabel = "Atajo de teclado…";
+    public const string HoldLabel = "Mantener tecla (pulsar para hablar)…";
+    public static bool IsCustom(string a) => a.StartsWith("Atajo: ") || a.StartsWith("Mantener: ");
+    public static string LabelOf(string a) => a.StartsWith("Atajo: ") ? HotkeyLabel : a.StartsWith("Mantener: ") ? HoldLabel : a;
+    public static string KeysOf(string a) => a.Contains(": ") && IsCustom(a) ? a[(a.IndexOf(": ") + 2)..] : "";
 
     // Teclas virtuales
     const byte CTRL = 0x11, SHIFT = 0x10, ALT = 0x12, WIN = 0x5B, ESC = 0x1B;
@@ -33,7 +41,15 @@ public static class Actions
             if (down) Hub.Mouse.SniperDown(); else Hub.Mouse.SniperUp();
             return;
         }
+        if (action.StartsWith("Mantener: "))
+        {
+            var keys = Parse(action[10..]);
+            if (down) foreach (var k in keys) keybd_event(k, 0, 0, UIntPtr.Zero);
+            else foreach (var k in keys.AsEnumerable().Reverse()) keybd_event(k, 0, 2, UIntPtr.Zero);
+            return;
+        }
         if (!down) return;
+        if (action.StartsWith("Atajo: ")) { Hotkey(action[7..]); return; }
         switch (action)
         {
             case "Desactivado": break;
@@ -52,10 +68,8 @@ public static class Actions
                 var muted = Hub.Audio.ToggleMicMute();
                 Hub.Toast(muted ? "Micrófono silenciado" : "Micrófono activo");
                 break;
-            case "Discord: silenciar micro": Hotkey(Settings.Current.DiscordMuteHotkey); break;
-            case "OBS: grabar / parar": _ = Hub.Obs.Request("ToggleRecord"); break;
-            case "OBS: emitir / parar": _ = Hub.Obs.Request("ToggleStream"); break;
-            case "OBS: guardar repetición": _ = Hub.Obs.Request("SaveReplayBuffer"); break;
+            case "Discord: silenciar micro (Ctrl+Shift+M)": Combo(CTRL, SHIFT, (byte)'M'); break;
+            case "Discord: ensordecer (Ctrl+Shift+D)": Combo(CTRL, SHIFT, (byte)'D'); break;
             case "Copiar": Combo(CTRL, (byte)'C'); break;
             case "Pegar": Combo(CTRL, (byte)'V'); break;
             case "Deshacer": Combo(CTRL, (byte)'Z'); break;
@@ -85,6 +99,13 @@ public static class Actions
     /// <summary>Pulsa un atajo escrito como "Ctrl+Shift+M".</summary>
     public static void Hotkey(string text)
     {
+        var keys = Parse(text);
+        if (keys.Count > 0) Combo(keys.ToArray());
+    }
+
+    /// <summary>"Ctrl+Shift+M", "Alt+F4", "V", "Espacio", "F13"… → teclas virtuales.</summary>
+    public static List<byte> Parse(string text)
+    {
         var keys = new List<byte>();
         foreach (var raw in text.Split('+', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries))
         {
@@ -92,12 +113,17 @@ public static class Actions
             byte? vk = p switch
             {
                 "CTRL" or "CONTROL" => CTRL, "SHIFT" or "MAYUS" or "MAYÚS" => SHIFT, "ALT" => ALT, "WIN" => WIN,
+                "ESPACIO" or "SPACE" => 0x20, "ENTER" or "INTRO" => 0x0D, "TAB" => 0x09, "ESC" => ESC,
+                "SUPR" or "DEL" => 0x2E, "INSERT" or "INS" => 0x2D, "INICIO" or "HOME" => 0x24, "FIN" or "END" => 0x23,
+                "REPAG" or "PGUP" => 0x21, "AVPAG" or "PGDN" => 0x22, "ARRIBA" or "UP" => 0x26, "ABAJO" or "DOWN" => 0x28,
+                "IZQUIERDA" or "LEFT" => 0x25, "DERECHA" or "RIGHT" => 0x27,
                 _ when p.Length == 1 => (byte)p[0],
+                _ when p.StartsWith("NUM") && p.Length == 4 && char.IsDigit(p[3]) => (byte)(0x60 + (p[3] - '0')),
                 _ when p.StartsWith('F') && int.TryParse(p[1..], out var f) && f is >= 1 and <= 24 => (byte)(0x6F + f),
                 _ => null
             };
             if (vk != null) keys.Add(vk.Value);
         }
-        if (keys.Count > 0) Combo(keys.ToArray());
+        return keys;
     }
 }

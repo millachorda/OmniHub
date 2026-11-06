@@ -12,6 +12,7 @@ namespace OmniHub.UI;
 public partial class MainWindow : Window
 {
     readonly List<Action> _live = new();
+    readonly List<Action> _cleanup = new();   // desuscripciones al cambiar de página
     System.Windows.Forms.NotifyIcon? _tray;
     bool _reallyClose;
     string _current = "Panel";
@@ -60,6 +61,8 @@ public partial class MainWindow : Window
     {
         _current = tag;
         _live.Clear();
+        foreach (var c in _cleanup) try { c(); } catch { }
+        _cleanup.Clear();
         try
         {
             Page.Content = tag switch

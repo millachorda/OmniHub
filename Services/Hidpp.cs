@@ -1,3 +1,4 @@
+using System.Collections.Concurrent;
 using System.Diagnostics;
 using System.Text;
 using HidSharp;
@@ -6,19 +7,32 @@ namespace OmniHub.Services;
 
 /// <summary>
 /// Cliente HID++ 2.0 para ratones Logitech (cable o receptor Lightspeed/Unifying).
-/// Permite DPI, tasa de sondeo, modo de perfiles y batería sin G HUB.
+/// DPI, tasa de sondeo, perfiles, batería y botones G (Mouse Button Spy 0x8110) sin G HUB.
+/// Un hilo lee todo lo que manda el ratón: respuestas a peticiones y eventos de botones.
 /// </summary>
 public sealed class HidppDevice : IDisposable
 {
     const byte SWID = 0x0A;
     readonly HidStream _s;
-    readonly byte _idx;
+    byte _idx;
     readonly Dictionary<ushort, byte> _feat = new();
-    readonly object _lock = new();
+    readonly object _callLock = new();
+    readonly Thread _reader;
+    volatile bool _run = true;
+    readonly ConcurrentDictionary<int, TaskCompletionSource<byte[]?>> _pending = new();
+
     public string Name { get; private set; } = "Logitech";
     public int Pid { get; }
 
-    HidppDevice(HidStream s, byte idx, int pid) { _s = s; _idx = idx; Pid = pid; }
+    /// <summary>Máscara de botones pulsados (bit 0 = botón 1) cada vez que cambia.</summary>
+    public event Action<int>? ButtonsChanged;
+
+    HidppDevice(HidStream s, int pid)
+    {
+        _s = s; Pid = pid;
+        _reader = new Thread(ReadLoop) { IsBackground = true, Name = "HID++" };
+        _reader.Start();
+    }
 
     public static List<HidppDevice> Discover()
     {
@@ -28,31 +42,49 @@ public sealed class HidppDevice : IDisposable
             try
             {
                 if (dev.GetMaxOutputReportLength() != 20) continue; // colección "long" de HID++
-                var desc = dev.GetReportDescriptor();
-                if (!desc.Reports.Any(r => r.ReportID == 0x11)) continue;
+                if (!dev.GetReportDescriptor().Reports.Any(r => r.ReportID == 0x11)) continue;
                 if (!dev.TryOpen(out var stream)) continue;
-                stream.ReadTimeout = 300;
-                // 0xFF = dispositivo por cable; 1..6 = ranuras de un receptor
+                stream.ReadTimeout = 250;
+                var h = new HidppDevice(stream, dev.ProductID);
+                // 0xFF = por cable; 1..6 = ranuras de un receptor
                 bool found = false;
                 foreach (byte idx in new byte[] { 0xFF, 1, 2, 3, 4, 5, 6 })
                 {
-                    var h = new HidppDevice(stream, idx, dev.ProductID);
-                    if (h.Ping())
-                    {
-                        h.LoadName();
-                        if (h.Feature(0x2201) != 0) // solo nos interesan ratones (DPI ajustable)
-                        {
-                            list.Add(h);
-                            found = true;
-                            if (idx == 0xFF) break;
-                        }
-                    }
+                    h._idx = idx; h._feat.Clear();
+                    if (h.Ping() && h.Feature(0x2201) != 0) { h.LoadName(); found = true; break; }
                 }
-                if (!found) stream.Dispose();
+                if (found) list.Add(h); else h.Dispose();
             }
             catch (Exception e) { Debug.WriteLine(e); }
         }
         return list;
+    }
+
+    void ReadLoop()
+    {
+        var r = new byte[64];
+        int lastMask = -1;
+        while (_run)
+        {
+            int n;
+            try { n = _s.Read(r); }
+            catch (TimeoutException) { continue; }
+            catch { if (!_run) break; Thread.Sleep(200); continue; }
+            if (n < 6 || r[1] != _idx) continue;
+
+            // Error HID++ 2.0: [11, idx, FF, feat, fn|swid, código]
+            if (r[2] == 0xFF && _pending.TryRemove((r[3] << 8) | r[4], out var err)) { err.TrySetException(new InvalidOperationException($"HID++ error {r[5]}")); continue; }
+            if (r[0] == 0x10 && r[2] == 0x8F && _pending.TryRemove((r[3] << 8) | r[4], out var old)) { old.TrySetResult(null); continue; }
+
+            if ((r[3] & 0x0F) == SWID && _pending.TryRemove((r[2] << 8) | r[3], out var tcs)) { tcs.TrySetResult(r[..20]); continue; }
+
+            // Eventos (swid 0): botones del espía 0x8110
+            if ((r[3] & 0x0F) == 0 && _spyIdx != 0 && r[2] == _spyIdx && (r[3] >> 4) == 0)
+            {
+                int mask = (r[4] << 8) | r[5];
+                if (mask != lastMask) { lastMask = mask; try { ButtonsChanged?.Invoke(mask); } catch { } }
+            }
+        }
     }
 
     bool Ping()
@@ -62,24 +94,18 @@ public sealed class HidppDevice : IDisposable
 
     byte[]? Call(byte feat, byte fn, params byte[] args)
     {
-        lock (_lock)
+        lock (_callLock)
         {
             var b = new byte[20];
             b[0] = 0x11; b[1] = _idx; b[2] = feat; b[3] = (byte)((fn << 4) | SWID);
             Array.Copy(args, 0, b, 4, Math.Min(args.Length, 16));
-            _s.Write(b);
-            var r = new byte[64];
-            var sw = Stopwatch.StartNew();
-            while (sw.ElapsedMilliseconds < 700)
-            {
-                int n;
-                try { n = _s.Read(r); } catch (TimeoutException) { break; }
-                if (n < 6 || r[1] != _idx) continue;
-                if (r[0] == 0x11 && r[2] == feat && r[3] == b[3]) return r[..20];
-                if (r[2] == 0xFF && r[3] == feat && r[4] == b[3]) throw new InvalidOperationException($"HID++ error {r[5]}");
-                if (r[0] == 0x10 && r[2] == 0x8F) return null; // HID++ 1.0: no existe
-            }
-            return null;
+            var key = (feat << 8) | b[3];
+            var tcs = new TaskCompletionSource<byte[]?>(TaskCreationOptions.RunContinuationsAsynchronously);
+            _pending[key] = tcs;
+            try { _s.Write(b); }
+            catch { _pending.TryRemove(key, out _); return null; }
+            if (!tcs.Task.Wait(700)) { _pending.TryRemove(key, out _); return null; }
+            return tcs.Task.Result; // relanza el error HID++ si lo hubo
         }
     }
 
@@ -195,6 +221,44 @@ public sealed class HidppDevice : IDisposable
         }
     }
 
+    // ---------- Botones G: Mouse Button Spy (0x8110) ----------
+    public bool HasButtonSpy => Feature(0x8110) != 0;
+
+    public int ButtonCount
+    {
+        get
+        {
+            var f = Feature(0x8110);
+            if (f == 0) return 0;
+            try { return Call(f, 0)?[4] ?? 0; } catch { return 0; }
+        }
+    }
+
+    volatile byte _spyIdx;
+    public bool StartSpy() { var f = Feature(0x8110); _spyIdx = f; try { return f != 0 && Call(f, 1) != null; } catch { return false; } }
+    public void StopSpy() { var f = Feature(0x8110); _spyIdx = 0; try { if (f != 0) Call(f, 2); } catch { } }
+
+    public byte[]? GetRemap()
+    {
+        var f = Feature(0x8110);
+        if (f == 0) return null;
+        try { return Call(f, 3)?[4..20]; } catch { return null; }
+    }
+
+    /// <summary>
+    /// Tabla física→lógica: valor = botón que ve Windows, 0 = el ratón no hace nada (lo gestiona OmniHub).
+    /// Los botones 1-3 (izquierdo, derecho, rueda) nunca se tocan.
+    /// </summary>
+    public bool SetRemap(byte[] map)
+    {
+        var f = Feature(0x8110);
+        if (f == 0) return false;
+        var m = new byte[16];
+        Array.Copy(map, m, Math.Min(16, map.Length));
+        m[0] = 1; m[1] = 2; m[2] = 3;
+        try { return Call(f, 4, m) != null; } catch { return false; }
+    }
+
     // ---------- Batería (0x1004 unificada o 0x1000) ----------
     public int? Battery()
     {
@@ -209,5 +273,9 @@ public sealed class HidppDevice : IDisposable
         return null;
     }
 
-    public void Dispose() { try { _s.Dispose(); } catch { } }
+    public void Dispose()
+    {
+        _run = false;
+        try { _s.Dispose(); } catch { }
+    }
 }

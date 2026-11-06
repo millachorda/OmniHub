@@ -68,8 +68,6 @@ public partial class MainWindow
         });
         Line("Ratón", () => Hub.Mouse.Active is { } m ? $"{m.Name}" : "Ratón genérico (botones y sensibilidad)");
         Line("Audio", () => Hub.Audio.DefaultOutput?.FriendlyName ?? "—");
-        Line("OBS", () => Hub.Obs.Connected ? (Hub.Obs.Recording ? "● Grabando" : Hub.Obs.Streaming ? "● En directo" : "Conectado") : St.ObsEnabled ? Hub.Obs.Status : "Desactivado");
-        Line("Discord", () => St.DiscordPresence ? Hub.Discord.Status : "Desactivado");
 
         return Stack(
             Header("Panel", "Todo tu PC de un vistazo"),
@@ -127,8 +125,7 @@ public partial class MainWindow
                 Combo(RgbService.Effects, L.Effect, e => { L.Effect = e; Hub.Rgb.Changed(); SaveSoon(); }),
                 LabeledSlider("Velocidad", 1, 100, L.Speed, v => { L.Speed = v; SaveSoon(); }, "0", " %"),
                 LabeledSlider("Brillo", 0, 100, L.Brightness, v => { L.Brightness = v; Hub.Rgb.Changed(); SaveSoon(); }, "0", " %"),
-                Toggle("Al sonar música, las luces cogen el color de la carátula", St.MediaLights, v => { St.MediaLights = v; SaveSoon(); }),
-                Toggle("Luces en rojo mientras OBS graba o emite", St.ObsRecordingLights, v => { St.ObsRecordingLights = v; SaveSoon(); })),
+                Toggle("Al sonar música, las luces cogen el color de la carátula", St.MediaLights, v => { St.MediaLights = v; SaveSoon(); })),
             Card(
                 ColorPicker("Color principal", L.Color1, c => { L.Color1 = c; Hub.Rgb.Changed(); SaveSoon(); }),
                 new Border { Height = 10 },
@@ -408,22 +405,77 @@ public partial class MainWindow
                 Btn("Buscar de nuevo", () => { Hub.Mouse.Discover(); Refresh(); })));
         }
 
+        // ---- Botones G del ratón Logitech (por hardware, sin G HUB) ----
+        if (Hub.Mouse.GButtonCount > 3)
+        {
+            var gList = new StackPanel();
+            var rows = new Dictionary<int, Border>();
+            for (int i = 4; i <= Hub.Mouse.GButtonCount; i++)
+            {
+                var row = ButtonRow($"Botón {i}", MouseService.GKey(i), () => Hub.Mouse.ApplyRemap());
+                var box = new Border { CornerRadius = new CornerRadius(8), Padding = new Thickness(8, 2, 8, 2), BorderThickness = new Thickness(1), BorderBrush = Brushes.Transparent, Child = row };
+                rows[i] = box;
+                gList.Children.Add(box);
+            }
+            var last = Sub("Pulsa cualquier botón del ratón y se iluminará su fila.", 12);
+            void Pressed(int b) => Dispatcher.BeginInvoke(() =>
+            {
+                last.Text = b <= 3 ? $"Has pulsado el botón {b} ({(b == 1 ? "izquierdo" : b == 2 ? "derecho" : "rueda")})." : $"Has pulsado el botón {b}.";
+                foreach (var (n, bx) in rows) { bx.BorderBrush = n == b ? B("Accent") : Brushes.Transparent; bx.Background = n == b ? B("CardHi") : Brushes.Transparent; }
+            });
+            Hub.Mouse.GButtonPressed += Pressed;
+            _cleanup.Add(() => Hub.Mouse.GButtonPressed -= Pressed);
+            var title = H2($"Botones G · {Hub.Mouse.Active?.Name}"); title.Foreground = B("Accent");
+            root.Children.Add(Card(title,
+                Sub("Los botones extra de tu ratón, configurados por OmniHub directamente en el ratón (sin G HUB). Al cerrar OmniHub, los laterales vuelven a ser Atrás/Adelante."),
+                last, gList,
+                Sub("Para Discord: elige «Discord: silenciar micro» o usa «Atajo de teclado…» con el mismo atajo que tengas en Discord → Ajustes → Atajos de teclado. Para pulsar para hablar usa «Mantener tecla».", 12)));
+        }
+
         var btns = new StackPanel();
         foreach (var b in MouseService.Buttons)
-        {
-            var bb = b;
-            var g = new Grid { Margin = new Thickness(0, 3, 0, 3) };
-            g.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(240) });
-            g.ColumnDefinitions.Add(new ColumnDefinition());
-            var l = Txt(b); l.VerticalAlignment = VerticalAlignment.Center;
-            var c = Combo(Actions.All, St.ButtonMap.TryGetValue(b, out var a) ? a : Actions.Default, v => { St.ButtonMap[bb] = v; SaveSoon(); }, 280);
-            Grid.SetColumn(c, 1);
-            g.Children.Add(l); g.Children.Add(c);
-            btns.Children.Add(g);
-        }
-        root.Children.Add(Card(H2("Botones (cualquier ratón)"), btns,
-            Sub("Los botones extra que el ratón gestiona por sí mismo (p. ej. los de DPI) no llegan a Windows y no se pueden reasignar aquí.", 12)));
+            btns.Children.Add(ButtonRow(b, b, null));
+        root.Children.Add(Card(H2(Hub.Mouse.GButtonCount > 3 ? "Botones de Windows (otros ratones)" : "Botones (cualquier ratón)"), btns,
+            Sub(Hub.Mouse.GButtonCount > 3 ? "Sirven para cualquier ratón que tengas conectado. Si un botón tiene acción aquí y arriba, gana la de arriba."
+                : "Los botones extra que el ratón gestiona por sí mismo (p. ej. los de DPI) no llegan a Windows y no se pueden reasignar aquí.", 12)));
         return root;
+    }
+
+    /// <summary>Fila «botón → acción», con caja de teclas para atajos personalizados.</summary>
+    UIElement ButtonRow(string label, string key, Action? changed)
+    {
+        var current = St.ButtonMap.TryGetValue(key, out var a) ? a : Actions.Default;
+        var g = new Grid { Margin = new Thickness(0, 3, 0, 3) };
+        g.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(220) });
+        g.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(300) });
+        g.ColumnDefinitions.Add(new ColumnDefinition());
+        var l = Txt(label); l.VerticalAlignment = VerticalAlignment.Center;
+        var keys = new TextBox { Width = 170, Text = Actions.KeysOf(current), Visibility = Actions.IsCustom(current) ? Visibility.Visible : Visibility.Collapsed, ToolTip = "Ej.: Ctrl+Shift+M, F13, V, Alt+Espacio" };
+        var save = Btn("Guardar", () => { }, true);
+        save.Visibility = keys.Visibility;
+        var custom = new StackPanel { Orientation = Orientation.Horizontal };
+        custom.Children.Add(keys); custom.Children.Add(save);
+        void Store(string label2)
+        {
+            var k = keys.Text.Trim();
+            St.ButtonMap[key] = label2 == Actions.HotkeyLabel ? "Atajo: " + k : label2 == Actions.HoldLabel ? "Mantener: " + k : label2;
+            SaveSoon(); changed?.Invoke();
+        }
+        var c = Combo(Actions.All, Actions.LabelOf(current), v =>
+        {
+            bool isCustom = v is Actions.HotkeyLabel or Actions.HoldLabel;
+            keys.Visibility = save.Visibility = isCustom ? Visibility.Visible : Visibility.Collapsed;
+            if (isCustom && keys.Text.Trim().Length == 0) { keys.Focus(); return; }
+            Store(v);
+        }, 280);
+        save.Click += (_, _) =>
+        {
+            if (Actions.Parse(keys.Text).Count == 0) { Toast("Atajo no válido (ej.: Ctrl+Shift+M)"); return; }
+            Store((string)c.SelectedItem); Toast($"{label}: {keys.Text.Trim()}");
+        };
+        Grid.SetColumn(c, 1); Grid.SetColumn(custom, 2);
+        g.Children.Add(l); g.Children.Add(c); g.Children.Add(custom);
+        return g;
     }
 
     // =====================================================================
@@ -604,118 +656,13 @@ public partial class MainWindow
     // =====================================================================
     UIElement PageIntegrations()
     {
-        var root = Stack(Header("Integraciones", "Spotify y multimedia, OBS, Discord, tus apps y perfiles automáticos"));
+        var root = Stack(Header("Integraciones", "Spotify y cualquier reproductor de música o vídeo"));
 
         root.Children.Add(Cols(2, MediaCard(), Card(H2("Música y luces"),
             Toggle("Las luces siguen el color de la carátula", St.MediaLights, v => { St.MediaLights = v; SaveSoon(); }),
             Sub("Funciona con Spotify, YouTube en el navegador, Apple Music, VLC… cualquier app que aparezca en los controles multimedia de Windows. Asigna «Reproducir / Pausa» o «Siguiente pista» a un botón del ratón en «Ratón».", 12))));
 
-        // ---- OBS ----
-        var host = new TextBox { Width = 150, Text = St.ObsHost };
-        var port = new TextBox { Width = 80, Text = St.ObsPort.ToString() };
-        var pass = new PasswordBox { Width = 200, Password = St.ObsPassword };
-        var obsStatus = Txt("");
-        var scenes = new ComboBox { Width = 240, HorizontalAlignment = HorizontalAlignment.Left };
-        foreach (var sc in Hub.Obs.Scenes) scenes.Items.Add(sc);
-        scenes.SelectedItem = Hub.Obs.CurrentScene;
-        scenes.SelectionChanged += (_, _) => { if (scenes.SelectedItem is string s && s != Hub.Obs.CurrentScene) _ = Hub.Obs.SetScene(s); };
-        _live.Add(() => obsStatus.Text = Hub.Obs.Connected ? (Hub.Obs.Recording ? "● Grabando" : "") + (Hub.Obs.Streaming ? "  ● En directo" : "") + (Hub.Obs.Recording || Hub.Obs.Streaming ? "" : "Conectado") : Hub.Obs.Status);
-        root.Children.Add(Card(H2("OBS Studio"),
-            Toggle("Activar integración con OBS", St.ObsEnabled, v => { St.ObsEnabled = v; SaveSoon(); if (v) _ = Hub.Obs.ConnectAsync(); else Hub.Obs.Disconnect(); }),
-            Row(Sub("Servidor  "), host, port, Sub("Contraseña  "), pass),
-            Row(Btn("Conectar", async () =>
-            {
-                St.ObsHost = host.Text.Trim(); St.ObsPort = int.TryParse(port.Text, out var p) ? p : 4455; St.ObsPassword = pass.Password; St.ObsEnabled = true; St.Save();
-                Toast("Conectando con OBS…");
-                var ok = await Hub.Obs.ConnectAsync();
-                Toast(ok ? "OBS conectado" : Hub.Obs.Status);
-                Refresh();
-            }, true), obsStatus),
-            Row(Btn("⏺ Grabar / parar", () => _ = Hub.Obs.Request("ToggleRecord")),
-                Btn("📡 Emitir / parar", () => _ = Hub.Obs.Request("ToggleStream")),
-                Btn("Guardar repetición", () => _ = Hub.Obs.Request("SaveReplayBuffer")),
-                Sub("  Escena  "), scenes),
-            Toggle("Luces en rojo mientras grabo o emito", St.ObsRecordingLights, v => { St.ObsRecordingLights = v; SaveSoon(); }),
-            Sub("En OBS: Herramientas → Ajustes del servidor WebSocket → «Activar servidor WebSocket» y copia la contraseña aquí.", 12)));
-
-        // ---- Discord ----
-        var clientId = new TextBox { Width = 230, Text = St.DiscordClientId };
-        var hotkey = new TextBox { Width = 150, Text = St.DiscordMuteHotkey };
-        var dStatus = Txt("");
-        _live.Add(() => dStatus.Text = St.DiscordPresence ? Hub.Discord.Status : "Rich Presence desactivado");
-        root.Children.Add(Card(H2("Discord"),
-            Toggle("Mostrar OmniHub en mi estado de Discord (Rich Presence)", St.DiscordPresence, v => { St.DiscordPresence = v; SaveSoon(); }),
-            Row(Sub("Application ID  "), clientId, Btn("Conectar", async () =>
-            {
-                St.DiscordClientId = clientId.Text.Trim(); St.DiscordPresence = true; St.Save();
-                var ok = await Task.Run(Hub.Discord.Connect);
-                Toast(ok ? "Discord conectado" : Hub.Discord.Status);
-            }), dStatus),
-            Row(Sub("Atajo de «Silenciar» en Discord  "), hotkey, Btn("Guardar", () => { St.DiscordMuteHotkey = hotkey.Text.Trim(); St.Save(); Toast("Atajo guardado"); }),
-                Btn("Probar silenciar", () => Actions.Hotkey(St.DiscordMuteHotkey))),
-            Sub("Application ID: créalo gratis en discord.com/developers/applications (New Application → copia el ID). Para silenciar desde el ratón asigna «Discord: silenciar micro» y pon aquí el mismo atajo que en Discord → Ajustes → Atajos de teclado.", 12)));
-
-        // ---- Lanzador de apps ----
-        var apps = Row();
-        foreach (var (name, open) in DetectApps())
-        {
-            var o = open;
-            apps.Children.Add(Btn(name, () => { try { o(); } catch (Exception e) { Toast(e.Message); } }));
-        }
-        if (apps.Children.Count == 0) apps.Children.Add(Sub("No he encontrado apps conocidas."));
-        root.Children.Add(Card(H2("Abrir apps"), apps));
-
-        // ---- Perfiles automáticos ----
-        var rules = new StackPanel();
-        foreach (var r in St.AppRules.ToList())
-        {
-            var rr = r;
-            var g = new DockPanel { Margin = new Thickness(0, 2, 0, 2) };
-            var del = Btn("Quitar", () => { St.AppRules.Remove(rr); St.Save(); Refresh(); });
-            DockPanel.SetDock(del, Dock.Right);
-            g.Children.Add(del);
-            g.Children.Add(Txt($"{rr.Process}  →  {rr.Profile}"));
-            rules.Children.Add(g);
-        }
-        var procs = Process.GetProcesses().Where(p => { try { return p.MainWindowHandle != IntPtr.Zero && p.ProcessName != "OmniHub"; } catch { return false; } })
-            .Select(p => p.ProcessName).Distinct(StringComparer.OrdinalIgnoreCase).OrderBy(x => x).ToList();
-        var procBox = new TextBox { Width = 160 };
-        var procPick = Combo(new[] { "Apps abiertas…" }.Concat(procs), "Apps abiertas…", v => { if (v != "Apps abiertas…") procBox.Text = v; }, 180);
-        var profNames = St.Profiles.Select(p => p.Name).ToList();
-        string chosen = profNames.FirstOrDefault() ?? "";
-        root.Children.Add(Card(H2("Perfiles automáticos por app"),
-            Toggle("Cambiar de perfil según la app que tengo delante", St.AutoProfiles, v => { St.AutoProfiles = v; SaveSoon(); }),
-            Row(Sub("Perfil por defecto  "), Combo(new[] { "(ninguno)" }.Concat(profNames), St.DefaultProfile.Length > 0 ? St.DefaultProfile : "(ninguno)", v => { St.DefaultProfile = v == "(ninguno)" ? "" : v; SaveSoon(); })),
-            rules,
-            Row(Sub("App (proceso)  "), procPick, procBox, Sub("  usa  "), Combo(profNames, chosen, v => chosen = v, 160),
-                Btn("Añadir regla", () =>
-                {
-                    var name = (procBox.Text ?? "").Trim();
-                    if (name.Length == 0 || chosen.Length == 0) return;
-                    St.AppRules.Add(new AppRule { Process = name, Profile = chosen }); St.Save(); Refresh();
-                }, true)),
-            Sub("Ejemplo: cs2 → Gaming, obs64 → Silencio, Spotify → Música. Elige una app abierta o escribe el nombre del proceso.", 12)));
         return root;
-    }
-
-    static List<(string, Action)> DetectApps()
-    {
-        var list = new List<(string, Action)>();
-        void Uri(string name, string scheme, string url)
-        {
-            try { if (Registry.ClassesRoot.OpenSubKey(scheme) != null) list.Add((name, () => SystemTools.OpenUrl(url))); } catch { }
-        }
-        Uri("Spotify", "spotify", "spotify:");
-        Uri("Discord", "discord", "discord://");
-        Uri("Steam", "steam", "steam://open/main");
-        Uri("Epic Games", "com.epicgames.launcher", "com.epicgames.launcher://");
-        Uri("Battle.net", "battlenet", "battlenet://");
-        Uri("EA app", "origin2", "origin2://");
-        Uri("Ubisoft Connect", "uplay", "uplay://");
-        Uri("Xbox", "msxbox", "msxbox://");
-        var obs = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ProgramFiles), "obs-studio", "bin", "64bit", "obs64.exe");
-        if (File.Exists(obs)) list.Add(("OBS Studio", () => Process.Start(new ProcessStartInfo(obs) { WorkingDirectory = Path.GetDirectoryName(obs)!, UseShellExecute = true })));
-        return list;
     }
 
     // =====================================================================

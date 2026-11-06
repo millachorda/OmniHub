@@ -21,6 +21,56 @@ public sealed class MouseService : IDisposable
     {
         foreach (var d in Logitech) d.Dispose();
         try { Logitech = HidppDevice.Discover(); } catch { Logitech = new(); }
+        SetupGButtons();
+    }
+
+    // ---------- Botones G de Logitech (sin G HUB) ----------
+    /// <summary>Se dispara con el número de botón (1..n) al pulsarlo: sirve para "aprender" cuál es cuál.</summary>
+    public event Action<int>? GButtonPressed;
+    public int GButtonCount { get; private set; }
+    int _mask;
+
+    public static string GKey(int n) => $"LG{n}";
+    static string GAction(int n) => Settings.Current.ButtonMap.TryGetValue(GKey(n), out var a) ? a : Actions.Default;
+
+    void SetupGButtons()
+    {
+        GButtonCount = 0;
+        if (Active is not { } d || !d.HasButtonSpy) return;
+        GButtonCount = Math.Min(16, d.ButtonCount);
+        d.ButtonsChanged += OnButtons;
+        d.StartSpy();
+        ApplyRemap();
+    }
+
+    /// <summary>
+    /// Los botones con acción de OmniHub se desactivan en el ratón (los ejecutamos nosotros);
+    /// los laterales sin asignar se quedan como Atrás/Adelante nativos.
+    /// </summary>
+    public void ApplyRemap()
+    {
+        if (Active is not { } d || GButtonCount == 0) return;
+        var map = new byte[16];
+        for (int i = 1; i <= GButtonCount; i++)
+            map[i - 1] = i <= 3 ? (byte)i : GAction(i) == Actions.Default && i is 4 or 5 ? (byte)i : (byte)0;
+        Task.Run(() => d.SetRemap(map));
+    }
+
+    void OnButtons(int mask)
+    {
+        int changed = mask ^ _mask;
+        _mask = mask;
+        for (int i = 0; i < 16; i++)
+        {
+            if (((changed >> i) & 1) == 0) continue;
+            int btn = i + 1;
+            bool down = ((mask >> i) & 1) != 0;
+            if (down) GButtonPressed?.Invoke(btn);
+            if (btn <= 3) continue;
+            var a = GAction(btn);
+            if (a == Actions.Default) continue;
+            System.Windows.Application.Current?.Dispatcher.BeginInvoke(() => Actions.Run(a, down));
+        }
     }
 
     // ---------- Ajustes de Windows ----------
@@ -123,6 +173,11 @@ public sealed class MouseService : IDisposable
     public void Dispose()
     {
         if (_hook != IntPtr.Zero) UnhookWindowsHookEx(_hook);
+        // Al salir el ratón vuelve a funcionar solo: laterales como Atrás/Adelante
+        if (Active is { } m && GButtonCount > 0)
+        {
+            try { m.StopSpy(); m.SetRemap(new byte[] { 1, 2, 3, 4, 5 }); } catch { }
+        }
         foreach (var d in Logitech) d.Dispose();
     }
 }
