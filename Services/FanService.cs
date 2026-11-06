@@ -143,7 +143,13 @@ public sealed class FanService : IDisposable
                         if (load > 70) target += 12; else if (load > 40) target += 5; else if (load < 15) target -= 10;
                         target = Math.Clamp(target, 20, 100);
                     }
-                    else if (mode == "Personalizado") target = Presets.EvalCurve(Presets.Custom(st.CustomCurve), temp);
+                    else if (mode == "Personalizado")
+                    {
+                        // Como en MSI: gana la curva que pida más aire; la gráfica solo sigue a la curva GPU
+                        if (st.CustomFans.Count > 0 && !st.CustomFans.Contains(ch.Id)) { if (ctl.ControlMode != ControlMode.Default) ctl.SetDefault(); continue; }
+                        var gpuPct = Presets.EvalIntervals(st.GpuCurve, GpuTemp);
+                        target = isGpu ? gpuPct : Math.Max(Presets.EvalIntervals(st.CpuCurve, CpuTemp), gpuPct);
+                    }
                     else target = Presets.FanCurves.TryGetValue(mode, out var curve) ? Presets.EvalCurve(curve, temp) : 50;
                 }
                 // Suavizado: sube rápido, baja lento (evita "tirones" de ruido)

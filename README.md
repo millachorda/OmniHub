@@ -23,9 +23,9 @@
 1. Descarga **OmniHub-Setup.exe** de la [última release](https://github.com/millachorda/OmniHub/releases/latest) y ábrelo.
 2. El instalador **escanea tu hardware** (placa, CPU, GPU, RAM, periféricos, audio) y te recomienda solo los componentes que tu PC necesita.
 3. Descarga la versión completa de OmniHub y sus módulos **desde las releases de este repositorio** y los instala en segundo plano, sin ventanas.
-4. Crea accesos directos, el launcher y la entrada para desinstalar en *Configuración → Aplicaciones*. Al desinstalar se quitan también los módulos (sensores, iluminación y audio).
+4. Crea accesos directos y la entrada para desinstalar en *Configuración → Aplicaciones*. Al desinstalar se quitan también los módulos (sensores, iluminación y audio).
 
-El launcher comprueba al abrirse si hay una versión nueva en GitHub y se actualiza solo.
+Al abrirse, OmniHub comprueba si hay una versión nueva en GitHub y se actualiza solo.
 
 > OmniHub pide permisos de administrador: los necesita para los ventiladores, el ecualizador y para instalarse en *Archivos de programa*.
 
@@ -37,7 +37,7 @@ Requiere el SDK de .NET 8 en Windows.
 dotnet publish OmniHub.csproj -c Release -o dist
 ```
 
-Sale un único `dist/OmniHub.exe` autocontenido (instalador + launcher + app). Al crear una etiqueta `vX.Y.Z`, GitHub Actions lo compila y lo sube a Releases.
+Sale un único `dist/OmniHub.exe` autocontenido (instalador + app). Al crear una etiqueta `vX.Y.Z`, GitHub Actions lo compila y lo sube a Releases.
 
 Los módulos se basan en proyectos abiertos y se redistribuyen sin modificar: ver [THIRD_PARTY.md](THIRD_PARTY.md).
 

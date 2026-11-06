@@ -9,7 +9,7 @@ namespace OmniHub;
 /// <summary>
 /// Un solo .exe con tres modos:
 ///  · fuera de la carpeta instalada  → instalador (escanea hardware y descarga lo necesario)
-///  · instalado                      → launcher → app
+///  · instalado                      → busca actualizaciones → app
 ///  · --uninstall                    → desinstalador
 /// </summary>
 public partial class App : Application
@@ -72,13 +72,28 @@ public partial class App : Application
         }
 
         Hub.TestMode = args.Contains("--test");
-        _single = new Mutex(true, Hub.TestMode ? "OmniHub.Test" : "OmniHub.SingleInstance", out bool first);
+        // Una sola instancia siempre (también en modo prueba). Si ya hay una, se trae al frente y esta se cierra.
+        bool first;
+        var devTest = Hub.TestMode && Environment.GetEnvironmentVariable("OMNIHUB_DEVTEST") == "1"; // solo pruebas de desarrollo
+        try { _single = new Mutex(true, devTest ? "OmniHub.DevTest" : "OmniHub.SingleInstance", out first); }
+        catch (UnauthorizedAccessException) { first = false; } // la abierta tiene más permisos: también cuenta
         if (!first)
         {
-            MessageBox.Show("OmniHub ya está abierto (mira en la bandeja del sistema).", "OmniHub");
+            try { using var show = EventWaitHandle.OpenExisting("OmniHub.Show"); show.Set(); } catch { }
             Shutdown();
             return;
         }
+        // Escucha "muéstrate" de una segunda apertura
+        var showEvent = new EventWaitHandle(false, EventResetMode.AutoReset, devTest ? "OmniHub.DevTest.Show" : "OmniHub.Show");
+        new Thread(() =>
+        {
+            while (showEvent.WaitOne())
+                Dispatcher.BeginInvoke(() =>
+                {
+                    if (Hub.ShowMain != null) Hub.ShowMain();
+                    else foreach (Window w in Windows) { w.Show(); w.Activate(); }
+                });
+        }) { IsBackground = true, Name = "SingleInstance" }.Start();
 
         if (args.Contains("--tray"))
         {
@@ -87,8 +102,9 @@ public partial class App : Application
             return;
         }
 
-        if (Settings.Current.SkipLauncher) new MainWindow().Show();
-        else new LauncherWindow().Show();
+        // Sin launcher: al abrir solo se buscan actualizaciones (en la copia instalada) y se abre la app
+        if (AppInfo.RunningInstalled && !Hub.TestMode) new UpdateWindow().Show();
+        else new MainWindow().Show();
     }
 
     /// <summary>Registro de errores en %AppData%\OmniHub\errores.log para poder diagnosticar.</summary>

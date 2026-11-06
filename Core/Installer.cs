@@ -88,7 +88,7 @@ public static class Installer
             catch (OperationCanceledException) { throw; }
             catch (Exception e)
             {
-                log.Report($"⚠ No se pudo instalar {c.Name}: {e.Message}. Puedes reintentarlo desde el launcher o descargarlo de {c.Homepage}");
+                log.Report($"⚠ No se pudo instalar {c.Name}: {e.Message}. Puedes reintentarlo en Ajustes → Módulos.");
             }
             i++;
             prog.Report((double)i / Math.Max(1, o.Components.Count));

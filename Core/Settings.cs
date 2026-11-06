@@ -7,7 +7,7 @@ namespace OmniHub.Core;
 public static class AppInfo
 {
     public const string Name = "OmniHub";
-    public const string Version = "1.0.4";
+    public const string Version = "1.0.5";
     public const string UninstallKey = @"SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall\OmniHub";
 
     public static string DefaultInstallDir =>
@@ -83,6 +83,7 @@ public class Settings
     public bool StartWithWindows { get; set; }
     public bool CloseVendorApps { get; set; }
     public string? OpenRgbPath { get; set; }
+    public Dictionary<string, int> ZoneLeds { get; set; } = new(); // "dispositivo|zona" -> nº de LEDs (conectores ARGB)
     public bool MouseRestored { get; set; }      // el ratón se devolvió a su memoria interna (una vez)
 
     // Estado actual
@@ -92,7 +93,11 @@ public class Settings
     public string FanSource { get; set; } = "Máximo CPU/GPU";
     public Dictionary<string, string> FanModes { get; set; } = new();   // sensor id -> modo
     public Dictionary<string, double> FanFixed { get; set; } = new();   // sensor id -> %
-    public double[] CustomCurve { get; set; } = { 25, 35, 55, 80, 100 }; // % a 30/45/60/75/90 °C
+    public double[] CustomCurve { get; set; } = { 25, 35, 55, 80, 100 }; // (antiguo, ya no se usa)
+    // Curva personalizada estilo MSI: 3 intervalos (°C, %) para CPU y para GPU
+    public double[][] CpuCurve { get; set; } = Presets.DefaultCpuCurve();
+    public double[][] GpuCurve { get; set; } = Presets.DefaultGpuCurve();
+    public List<string> CustomFans { get; set; } = new();  // canales que siguen la curva (vacío = todos)
     public bool GpuZeroFan { get; set; }
     public double ZeroFanTemp { get; set; } = 50;
 
@@ -152,6 +157,8 @@ public class Settings
     {
         if (Eq.Length != 10) Eq = new double[10];
         if (CustomCurve.Length != 5) CustomCurve = new double[] { 25, 35, 55, 80, 100 };
+        if (CpuCurve is not { Length: >= 2 and <= 8 } || CpuCurve.Any(p => p is not { Length: 2 })) CpuCurve = Presets.DefaultCpuCurve();
+        if (GpuCurve is not { Length: >= 2 and <= 8 } || GpuCurve.Any(p => p is not { Length: 2 })) GpuCurve = Presets.DefaultGpuCurve();
         if (Profiles.Count == 0)
         {
             Profiles.Add(new Profile { Name = "Gaming", FanPreset = "Rendimiento", EqPreset = "FPS (pasos)", Eq = Presets.Eq["FPS (pasos)"],
@@ -195,6 +202,13 @@ public static class Presets
         ["Rendimiento"] = new[] { (30.0, 45.0), (50, 60), (65, 80), (75, 100) },
         ["Máximo"]      = new[] { (0.0, 100.0) },
     };
+
+    public static double[][] DefaultCpuCurve() => new[] { new double[] { 50, 40 }, new double[] { 65, 65 }, new double[] { 72, 85 } };
+    public static double[][] DefaultGpuCurve() => new[] { new double[] { 48, 35 }, new double[] { 60, 60 }, new double[] { 70, 80 } };
+
+    /// <summary>Por debajo del intervalo 1 se mantiene su %, entre puntos se interpola y por encima del 3 se mantiene el último.</summary>
+    public static double EvalIntervals(double[][] pts, double temp) =>
+        EvalCurve(pts.OrderBy(p => p[0]).Select(p => (p[0], p[1])).ToArray(), temp);
 
     public static readonly double[] CustomTemps = { 30, 45, 60, 75, 90 };
 

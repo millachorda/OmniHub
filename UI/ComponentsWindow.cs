@@ -5,7 +5,7 @@ using OmniHub.Core;
 
 namespace OmniHub.UI;
 
-/// <summary>Ventana para instalar/reintentar componentes desde el launcher o la app.</summary>
+/// <summary>Ventana para instalar/reintentar componentes desde Ajustes.</summary>
 public class ComponentsWindow : Window
 {
     readonly TextBlock _log = new() { FontFamily = new FontFamily("Cascadia Mono, Consolas"), FontSize = 12, TextWrapping = TextWrapping.Wrap };

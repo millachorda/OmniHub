@@ -13,7 +13,7 @@
     <AssemblyName>OmniHub</AssemblyName>
     <RootNamespace>OmniHub</RootNamespace>
     <Product>OmniHub</Product>
-    <Version>1.0.4</Version>
+    <Version>1.0.5</Version>
     <Company>OmniHub</Company>
     <Description>OmniHub - centro de control universal para PC</Description>
     <RuntimeIdentifier>win-x64</RuntimeIdentifier>

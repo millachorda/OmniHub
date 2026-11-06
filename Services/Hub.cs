@@ -46,7 +46,9 @@ public static class Hub
         await Media.InitAsync();
 
         log?.Report("Conectando iluminación…");
-        _ = Rgb.ConnectAsync(); // en segundo plano: el módulo de iluminación puede tardar
+        // en segundo plano: el módulo de iluminación tarda unos segundos en detectar todo.
+        // Se reinicia con nuestros permisos de administrador para que vea RAM y placa; en modo prueba no se toca.
+        _ = TestMode ? Rgb.ConnectAsync(launchIfNeeded: false) : Rgb.ConnectAsync(restart: true);
 
         if (Audio.EqAvailable)
         {

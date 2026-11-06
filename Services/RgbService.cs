@@ -30,12 +30,20 @@ public sealed class RgbService : IDisposable
     public Func<double>? CpuTemp { get; set; }
     public (byte r, byte g, byte b)? MediaColor { get; set; }
 
-    public async Task<bool> ConnectAsync(bool launchIfNeeded = true)
+    public async Task<bool> ConnectAsync(bool launchIfNeeded = true, bool restart = false)
     {
-        if (TryConnect()) return true;
+        // La primera vez que arranca OmniHub (con permisos de administrador) reiniciamos el módulo:
+        // si alguien lo abrió sin permisos, no puede leer la RAM ni el RGB de la placa (bus SMBus).
+        if (restart && IsAdmin)
+        {
+            foreach (var p in Process.GetProcessesByName("OpenRGB"))
+                try { p.Kill(); p.WaitForExit(3000); } catch { }
+            await Task.Delay(500);
+        }
+        else if (TryConnect()) return true;
         if (!launchIfNeeded) return false;
         var exe = Components.FindOpenRgb();
-        if (exe == null) { Status = "OpenRGB no está instalado"; return false; }
+        if (exe == null) { Status = "Falta el módulo de iluminación"; return false; }
         if (!Process.GetProcessesByName("OpenRGB").Any())
         {
             Status = "Arrancando OpenRGB…";
@@ -68,6 +76,7 @@ public sealed class RgbService : IDisposable
                 _devices = _client.GetAllControllerData();
                 _client.DeviceListUpdated += (_, _) => Task.Run(Refresh);
                 foreach (var d in _devices) SafeCustom(d.Index);
+                ApplyZoneSizes();
             }
             Status = $"{_devices.Length} dispositivo(s) RGB";
             _staticSent = false;
@@ -79,6 +88,50 @@ public sealed class RgbService : IDisposable
             Status = "Sin conectar";
             return false;
         }
+    }
+
+    static bool IsAdmin => new System.Security.Principal.WindowsPrincipal(System.Security.Principal.WindowsIdentity.GetCurrent())
+        .IsInRole(System.Security.Principal.WindowsBuiltInRole.Administrator);
+
+    /// <summary>LEDs por defecto para un conector ARGB vacío (lo que no exista se ignora sin problema).</summary>
+    public const int DefaultArgbLeds = 30;
+    public static string ZoneKey(Device d, Zone z) => $"{d.Name}|{z.Name}";
+
+    /// <summary>
+    /// Los conectores ARGB de la placa (ventiladores, tiras) llegan con 0 LEDs porque el hardware no
+    /// dice cuántos hay. Les damos el número guardado por el usuario o uno por defecto. Llamar con _lock.
+    /// </summary>
+    void ApplyZoneSizes()
+    {
+        if (_client == null) return;
+        bool changed = false;
+        var st = Settings.Current;
+        foreach (var d in _devices)
+            for (int zi = 0; zi < d.Zones.Length; zi++)
+            {
+                var z = d.Zones[zi];
+                if (z.LedsMax <= z.LedsMin) continue; // no redimensionable
+                var key = ZoneKey(d, z);
+                int want = st.ZoneLeds.TryGetValue(key, out var n) ? n : z.LedCount == 0 ? DefaultArgbLeds : (int)z.LedCount;
+                want = (int)Math.Clamp(want, z.LedsMin, z.LedsMax);
+                st.ZoneLeds[key] = want;
+                if (want != z.LedCount) { try { _client.ResizeZone(d.Index, zi, want); changed = true; } catch { } }
+            }
+        if (changed)
+        {
+            _devices = _client.GetAllControllerData();
+            foreach (var d in _devices) SafeCustom(d.Index);
+            st.Save();
+        }
+    }
+
+    /// <summary>Cambia los LEDs de un conector ARGB (p. ej. 3 ventiladores × 8 LEDs = 24).</summary>
+    public void SetZoneLeds(string key, int leds)
+    {
+        Settings.Current.ZoneLeds[key] = leds;
+        lock (_lock) { try { ApplyZoneSizes(); } catch { } }
+        _staticSent = false;
+        Settings.Current.Save();
     }
 
     public void Refresh()

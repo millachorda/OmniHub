@@ -141,7 +141,33 @@ public partial class MainWindow
                 Hub.Rgb.Changed(); SaveSoon();
             }));
         }
-        root.Children.Add(Card(H2("Dispositivos RGB"), list));
+        root.Children.Add(Card(H2("Dispositivos RGB"), list,
+            Sub("¿Falta la RAM? Necesita el módulo de sensores y que OmniHub se abra con permisos de administrador (lo hace solo). Si MSI Center está abierto, ciérralo: bloquea el acceso a la memoria.", 12)));
+
+        // Conectores ARGB de la placa (ventiladores y tiras): el hardware no dice cuántos LEDs tienen
+        var zones = new StackPanel();
+        foreach (var d in Hub.Rgb.Devices)
+            foreach (var z in d.Zones.Where(z => z.LedsMax > z.LedsMin))
+            {
+                var key = RgbService.ZoneKey(d, z);
+                var g = new Grid { Margin = new Thickness(0, 3, 0, 3) };
+                g.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+                g.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+                var name = Stack(Txt($"{z.Name}"), Sub($"{d.Name} · máx. {z.LedsMax} LEDs", 11));
+                var box = new TextBox { Width = 70, Text = $"{z.LedCount}", TextAlignment = TextAlignment.Center };
+                var apply = Btn("Aplicar", () =>
+                {
+                    if (!int.TryParse(box.Text, out var n)) { Toast("Escribe un número"); return; }
+                    Hub.Rgb.SetZoneLeds(key, n); Toast($"{z.Name}: {n} LEDs"); Refresh();
+                });
+                var right = Row(Sub("LEDs  "), box, apply);
+                Grid.SetColumn(right, 1);
+                g.Children.Add(name); g.Children.Add(right);
+                zones.Children.Add(g);
+            }
+        if (zones.Children.Count > 0)
+            root.Children.Add(Card(H2("Conectores ARGB (ventiladores y tiras)"), zones,
+                Sub($"Pon cuántos LEDs hay en cada conector: suma los de todos los ventiladores encadenados (p. ej. 3 ventiladores × 8 = 24). Si no lo sabes, deja {RgbService.DefaultArgbLeds}: los que sobren no hacen nada. Un conector a 0 no enciende nada.", 12)));
         return root;
     }
 
@@ -292,70 +318,6 @@ public partial class MainWindow
         return grid;
     }
 
-    /// <summary>Editor de la curva personalizada: 5 puntos (30–90 °C) con vista previa.</summary>
-    UIElement CurveEditor()
-    {
-        const double W = 520, H = 170;
-        var canvas = new Canvas { Width = W, Height = H, Background = B("Bg"), ClipToBounds = true, HorizontalAlignment = HorizontalAlignment.Left, Margin = new Thickness(0, 0, 0, 12) };
-        for (int i = 0; i <= 4; i++)
-        {
-            canvas.Children.Add(new Line { X1 = 0, X2 = W, Y1 = H * i / 4, Y2 = H * i / 4, Stroke = B("Line"), StrokeThickness = 1 });
-            var lbl = new TextBlock { Text = $"{100 - i * 25}%", FontSize = 10, Foreground = B("Muted") };
-            Canvas.SetLeft(lbl, 4); Canvas.SetTop(lbl, Math.Min(H * i / 4, H - 14)); canvas.Children.Add(lbl);
-        }
-        var line = new Polyline { Stroke = B("AccentGrad"), StrokeThickness = 3, StrokeLineJoin = PenLineJoin.Round };
-        var area = new Polygon { Fill = new SolidColorBrush(Color.FromArgb(40, 0, 229, 255)) };
-        canvas.Children.Add(area); canvas.Children.Add(line);
-        var dots = new List<System.Windows.Shapes.Ellipse>();
-        double X(double t) => (t - 20) / 80.0 * W;
-        double Y(double p) => H - p / 100.0 * H;
-        void Redraw()
-        {
-            var pts = new PointCollection { new Point(0, Y(St.CustomCurve[0])) };
-            for (int i = 0; i < 5; i++) pts.Add(new Point(X(Presets.CustomTemps[i]), Y(St.CustomCurve[i])));
-            pts.Add(new Point(W, Y(St.CustomCurve[4])));
-            line.Points = pts;
-            var poly = new PointCollection(pts) { new Point(W, H), new Point(0, H) };
-            area.Points = poly;
-            for (int i = 0; i < dots.Count; i++) { Canvas.SetLeft(dots[i], X(Presets.CustomTemps[i]) - 5); Canvas.SetTop(dots[i], Y(St.CustomCurve[i]) - 5); }
-        }
-        for (int i = 0; i < 5; i++)
-        {
-            var d = new System.Windows.Shapes.Ellipse { Width = 10, Height = 10, Fill = B("Text") };
-            dots.Add(d); canvas.Children.Add(d);
-        }
-        var marker = new Line { Stroke = B("Warn"), StrokeThickness = 1.5, StrokeDashArray = new DoubleCollection { 3, 3 }, Y1 = 0, Y2 = H };
-        canvas.Children.Add(marker);
-        _live.Add(() =>
-        {
-            var t = St.FanSource switch { "CPU" => Hub.Fans.CpuTemp, "GPU" => Hub.Fans.GpuTemp, _ => Math.Max(Hub.Fans.CpuTemp, Hub.Fans.GpuTemp) };
-            marker.X1 = marker.X2 = Math.Clamp(X(t), 0, W);
-        });
-
-        var sliders = new UniformGrid { Columns = 5 };
-        var all = new List<Slider>();
-        for (int i = 0; i < 5; i++)
-        {
-            int idx = i;
-            var v = Txt($"{St.CustomCurve[i]:0} %"); v.HorizontalAlignment = HorizontalAlignment.Center;
-            var s = new Slider { Minimum = 0, Maximum = 100, Value = St.CustomCurve[i], Margin = new Thickness(6, 0, 6, 0), TickFrequency = 5, IsSnapToTickEnabled = true };
-            s.ValueChanged += (_, e) =>
-            {
-                St.CustomCurve[idx] = e.NewValue;
-                // la curva nunca baja al subir la temperatura
-                for (int k = idx + 1; k < 5; k++) if (St.CustomCurve[k] < e.NewValue) St.CustomCurve[k] = e.NewValue;
-                for (int k = 0; k < idx; k++) if (St.CustomCurve[k] > e.NewValue) St.CustomCurve[k] = e.NewValue;
-                v.Text = $"{e.NewValue:0} %"; Redraw(); SaveSoon();
-                for (int k = 0; k < all.Count; k++) if (k != idx && Math.Abs(all[k].Value - St.CustomCurve[k]) > 0.1) all[k].Value = St.CustomCurve[k];
-            };
-            all.Add(s);
-            var t = Sub($"{Presets.CustomTemps[i]:0} °C", 12); t.HorizontalAlignment = HorizontalAlignment.Center;
-            sliders.Children.Add(Stack(t, s, v));
-        }
-        Redraw();
-        return Card(H2("Curva personalizada"), canvas, sliders,
-            Sub("Velocidad de los ventiladores según la temperatura. La línea discontinua marca la temperatura actual.", 12));
-    }
 
     // =====================================================================
     // =====================================================================
@@ -590,7 +552,6 @@ public partial class MainWindow
             Header("Ajustes", $"OmniHub {AppInfo.Version}"),
             Card(H2("General"),
                 Toggle("Al cerrar la ventana, seguir en la bandeja del sistema", St.CloseToTray, v => { St.CloseToTray = v; SaveSoon(); }),
-                Toggle("Saltar el launcher al abrir", St.SkipLauncher, v => { St.SkipLauncher = v; SaveSoon(); }),
                 Toggle("Iniciar con Windows", St.StartWithWindows, v => { St.StartWithWindows = v; SystemTools.SetStartup(v, AppInfo.ExePath); SaveSoon(); })),
             Card(H2("Apps del fabricante"),
                 Sub(vendors.Count == 0 ? "No hay ninguna abierta ahora mismo." : "Abiertas ahora: " + string.Join(", ", vendors)),
