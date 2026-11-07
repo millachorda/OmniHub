@@ -13,7 +13,7 @@
     <AssemblyName>OmniHub</AssemblyName>
     <RootNamespace>OmniHub</RootNamespace>
     <Product>OmniHub</Product>
-    <Version>1.0.7</Version>
+    <Version>1.0.8</Version>
     <Company>OmniHub</Company>
     <Description>OmniHub - centro de control universal para PC</Description>
     <RuntimeIdentifier>win-x64</RuntimeIdentifier>
@@ -24,6 +24,10 @@
     <EnableCompressionInSingleFile>true</EnableCompressionInSingleFile>
     <DebugType>embedded</DebugType>
     <SatelliteResourceLanguages>es;en</SatelliteResourceLanguages>
+    <!-- Optimización: recolector de memoria sin hilo en segundo plano (menos RAM y CPU para una app de bandeja).
+         ReadyToRun se probó y se descartó: con el .exe comprimido arrancaba más lento (3,5 s frente a 1,2 s). -->
+    <ConcurrentGarbageCollection>false</ConcurrentGarbageCollection>
+    <TieredPGO>true</TieredPGO>
   </PropertyGroup>
 
   <ItemGroup>

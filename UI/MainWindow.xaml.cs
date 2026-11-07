@@ -24,13 +24,37 @@ public partial class MainWindow : Window
         Hub.ToastHandler = t => Dispatcher.BeginInvoke(() => Toast(t));
         Hub.Ticked += OnTick;
         SetupTray();
+        IsVisibleChanged += (_, _) => UpdateBackground();
         Loaded += async (_, _) =>
         {
             Page.Content = Center("Iniciando servicios…");
-            await Hub.StartAsync(new Progress<string>(s => Page.Content = Center(s)));
-            Navigate("Panel");
+            await Hub.StartAsync(new Progress<string>(s => { if (!Hub.Background) Page.Content = Center(s); }));
+            _servicesStarted = true;
+            if (Hub.Background) Page.Content = null; // arrancó escondida: la página se crea al abrirla
+            else Navigate("Panel");
         };
     }
+
+    /// <summary>
+    /// Ventana escondida o minimizada = segundo plano: se suelta la página (su memoria se libera)
+    /// y los servicios pasan a modo ligero. Al volver se reconstruye la página donde estabas.
+    /// </summary>
+    void UpdateBackground()
+    {
+        bool bg = !IsVisible || WindowState == WindowState.Minimized;
+        if (bg == Hub.Background) return;
+        Hub.Background = bg;
+        if (bg)
+        {
+            _live.Clear();
+            foreach (var c in _cleanup) try { c(); } catch { }
+            _cleanup.Clear();
+            Page.Content = null;
+        }
+        else if (_servicesStarted) Navigate(_current);
+    }
+
+    bool _servicesStarted;
 
     public void StartHidden()
     {
@@ -95,6 +119,7 @@ public partial class MainWindow : Window
         base.OnStateChanged(e);
         // Evita que la ventana maximizada sin bordes se salga de la pantalla
         RootGrid.Margin = WindowState == WindowState.Maximized ? new Thickness(7) : new Thickness(0);
+        UpdateBackground(); // minimizada también cuenta como segundo plano
     }
 
     protected override void OnClosing(CancelEventArgs e)

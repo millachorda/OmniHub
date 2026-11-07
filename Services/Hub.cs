@@ -94,12 +94,48 @@ public static class Hub
         st.Save();
     }
 
+    /// <summary>
+    /// Ventana escondida en la bandeja: se sigue controlando todo (ventiladores, luces, EQ) pero se
+    /// deja de leer lo que solo sirve para mirar, y se libera la memoria de la interfaz.
+    /// </summary>
+    public static bool Background
+    {
+        get => _background;
+        set
+        {
+            _background = value;
+            Fans.Light = value;
+            if (value) TrimMemorySoon();
+        }
+    }
+    static bool _background;
+
+    [System.Runtime.InteropServices.DllImport("kernel32.dll")]
+    static extern bool SetProcessWorkingSetSize(IntPtr proc, IntPtr min, IntPtr max);
+
+    /// <summary>Devuelve a Windows la memoria que la app no está usando (unos segundos después de esconderse).</summary>
+    static async void TrimMemorySoon()
+    {
+        await Task.Delay(3000);
+        if (!_background) return;
+        await Task.Run(() =>
+        {
+            GC.Collect(2, GCCollectionMode.Forced, true, true);
+            GC.WaitForPendingFinalizers();
+            GC.Collect(2, GCCollectionMode.Forced, true, true);
+            try { SetProcessWorkingSetSize(System.Diagnostics.Process.GetCurrentProcess().Handle, (IntPtr)(-1), (IntPtr)(-1)); } catch { }
+        });
+    }
+
     static async Task TickAsync()
     {
         _tick++;
         var st = Settings.Current;
         if (_tick % 2 == 0) await Task.Run(Fans.Tick);
-        await Media.PollAsync();
+        // En segundo plano, la música solo hace falta cada pocos segundos (salvo si las luces siguen la carátula)
+        bool mediaNeeded = !_background || st.MediaLights || st.Lighting.Effect == "Carátula de la música";
+        if (mediaNeeded || _tick % 5 == 0) await Media.PollAsync();
+        if (_background && _tick % 300 == 0) TrimMemorySoon(); // cada 5 min en la bandeja
         Rgb.MediaColor = Media.CoverColor;
         if (st.MediaLights && Media.Playing && Media.CoverColor != null && st.Lighting.Effect != "Carátula de la música")
         { st.Lighting.Effect = "Carátula de la música"; Rgb.Changed(); }

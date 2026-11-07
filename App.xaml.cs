@@ -79,7 +79,7 @@ public partial class App : Application
         catch (UnauthorizedAccessException) { first = false; } // la abierta tiene más permisos: también cuenta
         if (!first)
         {
-            try { using var show = EventWaitHandle.OpenExisting("OmniHub.Show"); show.Set(); } catch { }
+            try { using var show = EventWaitHandle.OpenExisting(devTest ? "OmniHub.DevTest.Show" : "OmniHub.Show"); show.Set(); } catch { }
             Shutdown();
             return;
         }

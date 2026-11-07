@@ -85,14 +85,25 @@ public sealed class FanService : IDisposable
         }
     }
 
+    /// <summary>
+    /// Modo ligero (ventana escondida): solo se leen CPU, GPU, placa y controladoras de ventiladores,
+    /// que es lo que necesitan las curvas y las luces. Discos y memoria solo se leen para el Monitor.
+    /// </summary>
+    public bool Light { get; set; }
+
     void UpdateAll()
     {
         foreach (var h in _pc.Hardware)
         {
+            if (Light && h.HardwareType is HardwareType.Storage or HardwareType.Memory or HardwareType.Network) continue;
             h.Update();
             foreach (var s in h.SubHardware) s.Update();
         }
     }
+
+    // Sensores elegidos la primera vez (buscar entre cientos de sensores cada 2 s es trabajo tirado)
+    ISensor? _cpuS, _gpuS, _cpuLoadS, _gpuLoadS;
+    static double Read(ISensor? s) => s?.Value is float v and > 0 ? v : 0;
 
     /// <summary>Llamar cada ~2 s: lee sensores y aplica curvas.</summary>
     public void Tick()
@@ -100,15 +111,26 @@ public sealed class FanService : IDisposable
         if (!Opened) return;
         try { UpdateAll(); } catch { return; }
 
-        CpuTemp = PickTemp(HardwareType.Cpu, "Package", "Tctl", "Tdie", "Core (Tctl/Tdie)", "CCD", "Core Max", "Core Average");
-        // Si el procesador no da su sensor: el sensor "CPU" de la placa base y, por último, la zona térmica de Windows
-        if (CpuTemp <= 0) CpuTemp = PickTemp(new[] { HardwareType.Motherboard, HardwareType.SuperIO, HardwareType.EmbeddedController }, "CPU Core", "CPU Socket", "CPU");
-        if (CpuTemp <= 0 && _tick++ % 5 == 0) _acpiTemp = AcpiTemp();
+        var gpus = new[] { HardwareType.GpuNvidia, HardwareType.GpuAmd, HardwareType.GpuIntel };
+        CpuTemp = Read(_cpuS);
+        if (CpuTemp <= 0)
+        {
+            _cpuS = FindSensor(new[] { HardwareType.Cpu }, SensorType.Temperature, "Package", "Tctl", "Tdie", "Core (Tctl/Tdie)", "CCD", "Core Max", "Core Average")
+                 // Si el procesador no da su sensor: el sensor "CPU" de la placa base
+                 ?? FindSensor(new[] { HardwareType.Motherboard, HardwareType.SuperIO, HardwareType.EmbeddedController }, SensorType.Temperature, "CPU Core", "CPU Socket", "CPU");
+            CpuTemp = Read(_cpuS);
+        }
+        if (CpuTemp <= 0) CpuTemp = PickTemp(HardwareType.Cpu); // cualquier temperatura de la CPU
+        if (CpuTemp <= 0 && _tick++ % 5 == 0) _acpiTemp = AcpiTemp(); // y por último, la zona térmica de Windows
         if (CpuTemp <= 0) CpuTemp = _acpiTemp;
         if (CpuTemp <= 0 && !_reported && _tick > 3) { _reported = true; WriteReport(); }
-        GpuTemp = PickTemp(new[] { HardwareType.GpuNvidia, HardwareType.GpuAmd, HardwareType.GpuIntel }, "GPU Core", "GPU Hot Spot", "Core");
-        CpuLoad = PickLoad(HardwareType.Cpu, "CPU Total");
-        GpuLoad = PickLoad(new[] { HardwareType.GpuNvidia, HardwareType.GpuAmd, HardwareType.GpuIntel }, "GPU Core", "D3D 3D");
+
+        GpuTemp = Read(_gpuS);
+        if (GpuTemp <= 0) { _gpuS = FindSensor(gpus, SensorType.Temperature, "GPU Core", "GPU Hot Spot", "Core"); GpuTemp = Read(_gpuS); }
+        if (_cpuLoadS == null) _cpuLoadS = FindSensor(new[] { HardwareType.Cpu }, SensorType.Load, "CPU Total");
+        CpuLoad = _cpuLoadS?.Value ?? 0;
+        if (_gpuLoadS == null) _gpuLoadS = FindSensor(gpus, SensorType.Load, "GPU Core", "D3D 3D");
+        GpuLoad = _gpuLoadS?.Value ?? 0;
 
         var st = Settings.Current;
         foreach (var ch in Channels)
@@ -161,6 +183,18 @@ public sealed class FanService : IDisposable
             }
             catch { }
         }
+    }
+
+    /// <summary>Primer sensor (por orden de preferencia de nombres) con un valor válido.</summary>
+    ISensor? FindSensor(HardwareType[] types, SensorType type, params string[] names)
+    {
+        var hw = AllHw().Where(h => types.Contains(h.HardwareType)).ToList();
+        foreach (var n in names)
+            foreach (var h in hw)
+                foreach (var s in h.Sensors)
+                    if (s.SensorType == type && s.Name.Contains(n, StringComparison.OrdinalIgnoreCase) && s.Value is > 0)
+                        return s;
+        return null;
     }
 
     double PickTemp(HardwareType t, params string[] names) => PickTemp(new[] { t }, names);

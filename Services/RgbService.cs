@@ -152,7 +152,11 @@ public sealed class RgbService : IDisposable
 
     void SafeCustom(int idx) { try { _client!.SetCustomMode(idx); } catch { } }
 
-    public void Changed() => _staticSent = false;
+    readonly AutoResetEvent _wake = new(false);
+    double _lastSend = -10;
+
+    /// <summary>Algo cambió (color, efecto, brillo…): se aplica al momento.</summary>
+    public void Changed() { _staticSent = false; _wake.Set(); }
 
     void StartLoop()
     {
@@ -169,7 +173,11 @@ public sealed class RgbService : IDisposable
         {
             try { Tick(sw.Elapsed.TotalSeconds); }
             catch { Status = "Conexión con OpenRGB perdida"; Thread.Sleep(2000); try { TryReconnectQuiet(); } catch { } }
-            Thread.Sleep(33); // ~30 fps
+            // Solo los efectos animados necesitan 30 fps; los lentos van a 4 fps y los fijos esperan a un cambio
+            var eff = State.Effect;
+            int wait = Override != null || eff is "Estático" or "Apagado" ? 250
+                     : eff is "Temperatura CPU" or "Carátula de la música" ? 250 : 33;
+            _wake.WaitOne(wait);
         }
     }
 
@@ -191,7 +199,8 @@ public sealed class RgbService : IDisposable
     {
         var s = State;
         bool animated = Override == null && s.Effect is not ("Estático" or "Apagado");
-        if (!animated && _staticSent) { if ((int)(t * 30) % 150 != 0) return; } // reenvío cada ~5 s por si otra app pisa
+        if (!animated && _staticSent && t - _lastSend < 5) return; // reenvío cada 5 s por si otra app pisa los colores
+        _lastSend = t;
 
         double speed = 0.15 + s.Speed / 100.0 * 1.6;
         double bri = s.Brightness / 100.0;
