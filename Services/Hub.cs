@@ -139,7 +139,6 @@ public static class Hub
         Rgb.MediaColor = Media.CoverColor;
         if (st.MediaLights && Media.Playing && Media.CoverColor != null && st.Lighting.Effect != "Carátula de la música")
         { st.Lighting.Effect = "Carátula de la música"; Rgb.Changed(); }
-        if (Rgb.State.Effect == "Carátula de la música") Rgb.Changed();
 
         Ticked?.Invoke();
     }

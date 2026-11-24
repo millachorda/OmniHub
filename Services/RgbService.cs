@@ -156,7 +156,7 @@ public sealed class RgbService : IDisposable
     double _lastSend = -10;
 
     /// <summary>Algo cambió (color, efecto, brillo…): se aplica al momento.</summary>
-    public void Changed() { _staticSent = false; _wake.Set(); }
+    public void Changed() { _staticSent = false; _fadeRequested = true; _wake.Set(); }
 
     void StartLoop()
     {
@@ -173,11 +173,8 @@ public sealed class RgbService : IDisposable
         {
             try { Tick(sw.Elapsed.TotalSeconds); }
             catch { Status = "Conexión con OpenRGB perdida"; Thread.Sleep(2000); try { TryReconnectQuiet(); } catch { } }
-            // Solo los efectos animados necesitan 30 fps; los lentos van a 4 fps y los fijos esperan a un cambio
-            var eff = State.Effect;
-            int wait = Override != null || eff is "Estático" or "Apagado" ? 250
-                     : eff is "Temperatura CPU" or "Carátula de la música" ? 250 : 33;
-            _wake.WaitOne(wait);
+            // Animado o en pleno fundido: ~45 fps. Fijo: espera a un cambio (y reenvía cada 5 s).
+            _wake.WaitOne(_moving ? 22 : 250);
         }
     }
 
@@ -195,17 +192,57 @@ public sealed class RgbService : IDisposable
         }
     }
 
+    // ---------- Motor de efectos ----------
+    // Todo va por "fase" acumulada (cambiar la velocidad no da saltos), el brillo se corrige con gamma
+    // (el ojo no ve la luz de forma lineal) y cada cambio de color o efecto se funde en 0,6 s.
+    const double Gamma = 2.2, FadeSeconds = 0.6;
+    volatile bool _moving;
+    double _phase, _lastT;
+    double _fadeStart = double.NaN;
+    volatile bool _fadeRequested;
+    readonly Dictionary<int, (double r, double g, double b)[]> _shown = new();
+    Dictionary<int, (double r, double g, double b)[]> _fadeFrom = new();
+    (double r, double g, double b) _smCover = (0, 0, 0);
+    double _smTemp = double.NaN;
+
+    static double Smooth(double x) { x = Math.Clamp(x, 0, 1); return x * x * (3 - 2 * x); }
+    /// <summary>Intensidad percibida (0–1) → intensidad real del LED.</summary>
+    static double Perceived(double x) => Math.Pow(Math.Clamp(x, 0, 1), Gamma);
+
     void Tick(double t)
     {
         var s = State;
+        double dt = Math.Clamp(t - _lastT, 0, 0.25);
+        _lastT = t;
+
+        if (_fadeRequested)
+        {
+            _fadeRequested = false;
+            _fadeStart = t;
+            _fadeFrom = _shown.ToDictionary(kv => kv.Key, kv => ((double r, double g, double b)[])kv.Value.Clone());
+        }
+        double fade = double.IsNaN(_fadeStart) ? 1 : Smooth((t - _fadeStart) / FadeSeconds);
+        bool fading = fade < 1;
+        if (!fading) _fadeStart = double.NaN;
+
         bool animated = Override == null && s.Effect is not ("Estático" or "Apagado");
-        if (!animated && _staticSent && t - _lastSend < 5) return; // reenvío cada 5 s por si otra app pisa los colores
+        _moving = animated || fading;
+        if (!_moving && _staticSent && t - _lastSend < 5) return; // fijo: reenvío cada 5 s por si otra app pisa los colores
         _lastSend = t;
 
-        double speed = 0.15 + s.Speed / 100.0 * 1.6;
-        double bri = s.Brightness / 100.0;
+        // Velocidad exponencial: mucha finura en lo lento (1 % ≈ un ciclo cada 30 s, 100 % ≈ 1,4 por segundo)
+        double freq = 0.033 * Math.Pow(2, s.Speed / 100.0 * 5.4);
+        _phase = (_phase + dt * freq) % 1000;
+        double bri = Perceived(s.Brightness / 100.0);
         var c1 = Hex(s.Color1);
         var c2 = Hex(s.Color2);
+
+        // Valores que cambian despacio (temperatura y carátula) se suavizan para no dar saltos
+        var temp = CpuTemp?.Invoke() ?? 40;
+        _smTemp = double.IsNaN(_smTemp) ? temp : _smTemp + (temp - _smTemp) * Math.Min(1, dt * 0.8);
+        var cover = MediaColor is { } mc ? ((double)mc.r, (double)mc.g, (double)mc.b) : c1;
+        double k = Math.Min(1, dt * 2.5);
+        _smCover = (_smCover.r + (cover.Item1 - _smCover.r) * k, _smCover.g + (cover.Item2 - _smCover.g) * k, _smCover.b + (cover.Item3 - _smCover.b) * k);
 
         lock (_lock)
         {
@@ -215,7 +252,18 @@ public sealed class RgbService : IDisposable
                 if (s.DisabledDevices.Contains(d.Name)) continue;
                 int n = d.Leds.Length;
                 if (n == 0) continue;
-                var cols = new Color[n];
+
+                // Posición de cada LED dentro de su zona (cada ventilador/conector tiene su propia ola)
+                var pos = new double[n];
+                int start = 0;
+                foreach (var z in d.Zones)
+                {
+                    int len = (int)z.LedCount;
+                    for (int j = 0; j < len && start + j < n; j++) pos[start + j] = len > 1 ? (double)j / len : 0;
+                    start += len;
+                }
+
+                var target = new (double r, double g, double b)[n];
                 for (int i = 0; i < n; i++)
                 {
                     (double r, double g, double b) c;
@@ -223,20 +271,52 @@ public sealed class RgbService : IDisposable
                     else c = s.Effect switch
                     {
                         "Apagado" => (0, 0, 0),
-                        "Respirar" => Mix((0, 0, 0), c1, (Math.Sin(t * speed * 2) + 1) / 2),
-                        "Arcoíris" => Hsv(t * speed * 60 % 360, 1, 1),
-                        "Ola arcoíris" => Hsv((t * speed * 90 + i * 360.0 / Math.Max(n, 12)) % 360, 1, 1),
-                        "Ciclo de color" => Mix(c1, c2, (Math.Sin(t * speed) + 1) / 2),
-                        "Temperatura CPU" => TempColor(CpuTemp?.Invoke() ?? 40),
-                        "Carátula de la música" => MediaColor is { } m ? (m.r, m.g, m.b) : c1,
+                        // Respiración: coseno suave + gamma, sin quedarse "muerta" abajo
+                        "Respirar" => Scale(c1, 0.02 + 0.98 * Perceived((1 - Math.Cos(2 * Math.PI * _phase)) / 2)),
+                        "Arcoíris" => Hsv(_phase * 360 % 360, 1, 1),
+                        // La ola da una vuelta completa por cada ventilador/conector
+                        "Ola arcoíris" => Hsv((_phase * 360 + pos[i] * 360) % 360, 1, 1),
+                        // De un color a otro por el arcoíris (sin tonos grises a mitad)
+                        "Ciclo de color" => HueMix(c1, c2, Smooth((1 - Math.Cos(2 * Math.PI * _phase)) / 2)),
+                        "Temperatura CPU" => TempColor(_smTemp),
+                        "Carátula de la música" => _smCover,
                         _ => c1,
                     };
-                    cols[i] = new Color((byte)Math.Clamp(c.r * bri, 0, 255), (byte)Math.Clamp(c.g * bri, 0, 255), (byte)Math.Clamp(c.b * bri, 0, 255));
+                    target[i] = (c.r * bri, c.g * bri, c.b * bri);
                 }
+
+                // Fundido desde lo que se veía antes
+                if (fading && _fadeFrom.TryGetValue(d.Index, out var from) && from.Length == n)
+                    for (int i = 0; i < n; i++)
+                        target[i] = (from[i].r + (target[i].r - from[i].r) * fade, from[i].g + (target[i].g - from[i].g) * fade, from[i].b + (target[i].b - from[i].b) * fade);
+
+                _shown[d.Index] = target;
+                var cols = new Color[n];
+                for (int i = 0; i < n; i++)
+                    cols[i] = new Color((byte)Math.Clamp(Math.Round(target[i].r), 0, 255), (byte)Math.Clamp(Math.Round(target[i].g), 0, 255), (byte)Math.Clamp(Math.Round(target[i].b), 0, 255));
                 _client.UpdateLeds(d.Index, cols);
             }
         }
         _staticSent = true;
+    }
+
+    static (double, double, double) Scale((double r, double g, double b) c, double k) => (c.r * k, c.g * k, c.b * k);
+
+    /// <summary>Mezcla dos colores recorriendo el tono por el camino más corto (como un arcoíris parcial).</summary>
+    static (double, double, double) HueMix((double r, double g, double b) a, (double r, double g, double b) b, double k)
+    {
+        var (h1, s1, v1) = ToHsv(a);
+        var (h2, s2, v2) = ToHsv(b);
+        double dh = ((h2 - h1 + 540) % 360) - 180;
+        return Hsv((h1 + dh * k + 360) % 360, s1 + (s2 - s1) * k, v1 + (v2 - v1) * k);
+    }
+
+    static (double h, double s, double v) ToHsv((double r, double g, double b) c)
+    {
+        double r = c.r / 255, g = c.g / 255, b = c.b / 255;
+        double max = Math.Max(r, Math.Max(g, b)), min = Math.Min(r, Math.Min(g, b)), d = max - min;
+        double h = d == 0 ? 0 : max == r ? 60 * (((g - b) / d) % 6) : max == g ? 60 * ((b - r) / d + 2) : 60 * ((r - g) / d + 4);
+        return ((h + 360) % 360, max == 0 ? 0 : d / max, max);
     }
 
     static (double, double, double) TempColor(double temp)
