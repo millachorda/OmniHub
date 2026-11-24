@@ -335,9 +335,12 @@ public partial class MainWindow : Window
             var b = new Button
             {
                 Width = 26, Height = 26, Padding = new Thickness(0), Margin = new Thickness(0, 0, 6, 8),
-                Background = new SolidColorBrush((Color)ColorConverter.ConvertFromString(sw)), BorderBrush = B("Line"), ToolTip = sw
+                Background = new SolidColorBrush((Color)ColorConverter.ConvertFromString(sw)), BorderBrush = B("Line"), ToolTip = sw,
+                // nombre accesible (lectores de pantalla y pruebas automáticas)
+                Tag = sw,
             };
             var s = sw;
+            System.Windows.Automation.AutomationProperties.SetName(b, $"{label}: {sw}");
             b.Click += (_, _) => Set(s);
             row.Children.Add(b);
         }

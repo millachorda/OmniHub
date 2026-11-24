@@ -168,6 +168,35 @@ public partial class MainWindow
         if (zones.Children.Count > 0)
             root.Children.Add(Card(H2("Conectores ARGB (ventiladores y tiras)"), zones,
                 Sub($"Pon cuántos LEDs hay en cada conector: suma los de todos los ventiladores encadenados (p. ej. 3 ventiladores × 8 = 24). Si no lo sabes, deja {RgbService.DefaultArgbLeds}: los que sobren no hacen nada. Un conector a 0 no enciende nada.", 12)));
+
+        // Servicios de luces de MSI: si están en marcha, pisan los colores de los ventiladores de la placa
+        var msi = MsiLighting.Installed();
+        if (msi.Count > 0)
+        {
+            bool running = MsiLighting.AnyRunning();
+            var msiStatus = Txt(running ? "● Los servicios de luces de MSI están en marcha: los ventiladores conectados a la placa no harán caso a OmniHub."
+                                     : "✓ Luces de MSI liberadas: OmniHub controla los ventiladores de la placa.");
+            msiStatus.Foreground = running ? B("Warn") : B("Ok");
+            var release = Btn("Liberar las luces de MSI", async () =>
+            {
+                Toast("Liberando las luces de MSI…");
+                await Task.Run(MsiLighting.Release);
+                await Hub.Rgb.ConnectAsync(restart: true); // el módulo vuelve a tomar el controlador de la placa
+                Hub.Rgb.Changed();
+                Toast("Listo: OmniHub controla ya las luces de la placa");
+                Refresh();
+            }, true);
+            var restore = Btn("Devolvérselas a MSI", async () =>
+            {
+                await Task.Run(MsiLighting.Restore);
+                Toast("Servicios de MSI restaurados");
+                Refresh();
+            });
+            root.Children.Add(Card(H2("Luces de la placa MSI"), msiStatus,
+                Row(running ? release : restore),
+                Sub($"Servicios: {string.Join(", ", msi)}. «Liberar» los para y los deja en inicio manual para que no vuelvan al reiniciar; " +
+                    "no se desinstala nada y puedes devolvérselos a MSI cuando quieras (por ejemplo, si vuelves a usar MSI Center).", 12)));
+        }
         return root;
     }
 

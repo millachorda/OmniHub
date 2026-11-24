@@ -43,6 +43,60 @@ public static class VendorApps
     }
 }
 
+/// <summary>
+/// Servicios de luces de MSI Center: mantienen agarrado el controlador RGB de la placa (los conectores
+/// ARGB de los ventiladores) y pisan cualquier color que mande otro programa. Se pueden "liberar"
+/// (parar y dejar en inicio manual) y devolver a MSI cuando se quiera. No se desinstala nada.
+/// </summary>
+public static class MsiLighting
+{
+    public static readonly string[] Services = { "Mystic_Light_Service", "MSI_Case_Service" };
+
+    static string Query(string svc)
+    {
+        try
+        {
+            var p = Process.Start(new ProcessStartInfo("sc.exe", $"query \"{svc}\"") { RedirectStandardOutput = true, UseShellExecute = false, CreateNoWindow = true });
+            var o = p!.StandardOutput.ReadToEnd(); p.WaitForExit(5000);
+            return o;
+        }
+        catch { return ""; }
+    }
+
+    /// <summary>Servicios de MSI que existen en este PC.</summary>
+    public static List<string> Installed() => Services.Where(s =>
+    {
+        var o = Query(s); // el estado sale en inglés en cualquier idioma de Windows: RUNNING / STOPPED / *_PENDING
+        return o.Contains("RUNNING") || o.Contains("STOPPED") || o.Contains("PENDING");
+    }).ToList();
+
+    public static bool AnyRunning() => Services.Any(s => Query(s).Contains("RUNNING"));
+
+    /// <summary>Para los servicios y los deja en inicio manual (no vuelven al reiniciar).</summary>
+    public static void Release()
+    {
+        foreach (var s in Installed())
+        {
+            SystemTools.Run("sc.exe", $"config \"{s}\" start= demand");
+            SystemTools.Run("sc.exe", $"stop \"{s}\"");
+        }
+        Settings.Current.MsiLightingReleased = true;
+        Settings.Current.Save();
+    }
+
+    /// <summary>Deja los servicios como venían de MSI (inicio automático) y los arranca.</summary>
+    public static void Restore()
+    {
+        foreach (var s in Installed())
+        {
+            SystemTools.Run("sc.exe", $"config \"{s}\" start= auto");
+            SystemTools.Run("sc.exe", $"start \"{s}\"", wait: false);
+        }
+        Settings.Current.MsiLightingReleased = false;
+        Settings.Current.Save();
+    }
+}
+
 public static class SystemTools
 {
     public static void OpenUrl(string url)
