@@ -79,6 +79,8 @@ public partial class App : Application
         catch (UnauthorizedAccessException) { first = false; } // la abierta tiene más permisos: también cuenta
         if (!first)
         {
+            // Esta segunda apertura la ha hecho el usuario, así que puede ceder el permiso de ponerse al frente
+            AllowSetForegroundWindow(-1);
             try { using var show = EventWaitHandle.OpenExisting(devTest ? "OmniHub.DevTest.Show" : "OmniHub.Show"); show.Set(); } catch { }
             Shutdown();
             return;
@@ -117,6 +119,8 @@ public partial class App : Application
         if (e == null) return;
         try { System.IO.File.AppendAllText(System.IO.Path.Combine(AppInfo.DataDir, "errores.log"), $"[{DateTime.Now:yyyy-MM-dd HH:mm:ss}] v{AppInfo.Version}\n{e}\n\n"); } catch { }
     }
+
+    [System.Runtime.InteropServices.DllImport("user32.dll")] static extern bool AllowSetForegroundWindow(int pid);
 
     static bool IsAdmin() =>
         new System.Security.Principal.WindowsPrincipal(System.Security.Principal.WindowsIdentity.GetCurrent())

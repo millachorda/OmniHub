@@ -50,7 +50,15 @@ public static class VendorApps
 /// </summary>
 public static class MsiLighting
 {
-    public static readonly string[] Services = { "Mystic_Light_Service", "MSI_Case_Service" };
+    /// <summary>Servicios de luces de distintas marcas (solo se tocan los que existan en el PC).</summary>
+    public static readonly string[] Services =
+    {
+        "Mystic_Light_Service", "MSI_Case_Service",          // MSI Center / Mystic Light
+        "LightingService",                                   // ASUS Aura / Armoury Crate
+        "CorsairService", "CorsairLLAService",               // Corsair iCUE
+        "Razer Chroma SDK Service", "RzChromaSDKService",     // Razer Chroma
+        "RGBFusionService",                                  // Gigabyte RGB Fusion
+    };
 
     static string Query(string svc)
     {

@@ -136,6 +136,9 @@ public static class Hub
         bool mediaNeeded = !_background || st.MediaLights || st.Lighting.Effect == "Carátula de la música";
         if (mediaNeeded || _tick % 5 == 0) await Media.PollAsync();
         if (_background && _tick % 300 == 0) TrimMemorySoon(); // cada 5 min en la bandeja
+        // Prioridad: si un servicio de luces que liberaste ha vuelto a arrancar (actualización de MSI, etc.), se vuelve a parar
+        if (st.LightingPriority && st.MsiLightingReleased && !TestMode && _tick % 30 == 0)
+            _ = Task.Run(() => { if (MsiLighting.AnyRunning()) { MsiLighting.Release(); Rgb.Changed(); } });
         Rgb.MediaColor = Media.CoverColor;
         if (st.MediaLights && Media.Playing && Media.CoverColor != null && st.Lighting.Effect != "Carátula de la música")
         { st.Lighting.Effect = "Carátula de la música"; Rgb.Changed(); }

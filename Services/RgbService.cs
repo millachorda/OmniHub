@@ -55,13 +55,14 @@ public sealed class RgbService : IDisposable
             }
             catch (Exception e) { Status = "No se pudo abrir OpenRGB: " + e.Message; return false; }
         }
-        // La detección de dispositivos de OpenRGB tarda unos segundos
-        for (int i = 0; i < 30; i++)
+        // La detección tarda (la RAM por el bus de la placa puede llevar más de 30 s). Si no llega, el vigilante del bucle sigue intentándolo.
+        StartLoop();
+        for (int i = 0; i < 90; i++)
         {
             await Task.Delay(1000);
             if (TryConnect()) return true;
         }
-        Status = "OpenRGB no responde (activa 'SDK Server' en OpenRGB)";
+        Status = "El módulo de iluminación tarda en responder; se sigue intentando…";
         return false;
     }
 
@@ -80,6 +81,7 @@ public sealed class RgbService : IDisposable
             }
             Status = $"{_devices.Length} dispositivo(s) RGB";
             _staticSent = false;
+            _connected = true;
             StartLoop();
             return true;
         }
@@ -143,9 +145,11 @@ public sealed class RgbService : IDisposable
                 if (_client == null) return;
                 _devices = _client.GetAllControllerData();
                 foreach (var d in _devices) SafeCustom(d.Index);
+                ApplyZoneSizes(); // los conectores ARGB llegan a 0 LEDs: sin esto los ventiladores se quedan apagados
             }
             Status = $"{_devices.Length} dispositivo(s) RGB";
             _staticSent = false;
+            _fadeRequested = true;
         }
         catch { }
     }
@@ -166,30 +170,72 @@ public sealed class RgbService : IDisposable
         _loop.Start();
     }
 
+    [System.Runtime.InteropServices.DllImport("winmm.dll")] static extern uint timeBeginPeriod(uint ms);
+    [System.Runtime.InteropServices.DllImport("winmm.dll")] static extern uint timeEndPeriod(uint ms);
+
+    const double FrameMs = 1000.0 / 60; // 60 fps con ritmo exacto
+    double _nextCheck;
+
     void Loop()
     {
         var sw = Stopwatch.StartNew();
+        bool hiRes = false;
+        double nextFrame = 0;
         while (_run)
         {
-            try { Tick(sw.Elapsed.TotalSeconds); }
-            catch { Status = "Conexión con OpenRGB perdida"; Thread.Sleep(2000); try { TryReconnectQuiet(); } catch { } }
-            // Animado o en pleno fundido: ~45 fps. Fijo: espera a un cambio (y reenvía cada 5 s).
-            _wake.WaitOne(_moving ? 22 : 250);
+            double now = sw.Elapsed.TotalSeconds;
+
+            // Vigilante: sin conexión → reintenta solo (y vuelve a abrir el módulo si se cerró);
+            // con conexión → si el módulo detectó dispositivos nuevos, se refresca (con LEDs de los conectores)
+            if (now >= _nextCheck)
+            {
+                _nextCheck = now + 3;
+                try { Watchdog(); } catch { }
+            }
+
+            try { Tick(now); }
+            catch { Status = "Conexión con el módulo de iluminación perdida; reconectando…"; _connected = false; }
+
+            if (_moving)
+            {
+                // El reloj normal de Windows va de 15,6 en 15,6 ms (fotogramas desiguales = tirones).
+                // Mientras hay animación se pide precisión de 1 ms y se programa cada fotograma a su hora exacta.
+                if (!hiRes) { timeBeginPeriod(1); hiRes = true; nextFrame = sw.Elapsed.TotalMilliseconds; }
+                nextFrame += FrameMs;
+                double wait = nextFrame - sw.Elapsed.TotalMilliseconds;
+                if (wait < -FrameMs * 3) { nextFrame = sw.Elapsed.TotalMilliseconds; wait = 0; } // se quedó atrás: no acumular
+                if (wait > 0) _wake.WaitOne((int)Math.Round(wait));
+            }
+            else
+            {
+                if (hiRes) { timeEndPeriod(1); hiRes = false; }
+                _wake.WaitOne(250);
+            }
         }
+        if (hiRes) timeEndPeriod(1);
     }
 
-    void TryReconnectQuiet()
+    volatile bool _connected;
+
+    void Watchdog()
     {
-        lock (_lock)
+        if (_client?.Connected != true || !_connected)
         {
-            if (_client?.Connected == true) return;
-            _client?.Dispose();
-            _client = new OpenRgbClient("127.0.0.1", 6742, "OmniHub", true, 1500, 4);
-            _devices = _client.GetAllControllerData();
-            foreach (var d in _devices) SafeCustom(d.Index);
-            _staticSent = false;
-            Status = $"{_devices.Length} dispositivo(s) RGB";
+            // ¿Se cerró el módulo? Se vuelve a abrir (solo con permisos de administrador: sin ellos no ve RAM ni placa)
+            if (IsAdmin && !Hub.TestMode && !Process.GetProcessesByName("OpenRGB").Any() && Components.FindOpenRgb() is { } exe)
+                try
+                {
+                    Process.Start(new ProcessStartInfo(exe, "--server --server-host 127.0.0.1")
+                    { WorkingDirectory = Path.GetDirectoryName(exe)!, UseShellExecute = false, CreateNoWindow = true, WindowStyle = ProcessWindowStyle.Hidden });
+                }
+                catch { }
+            TryConnect();
+            return;
         }
+        // Dispositivos que el módulo ha terminado de detectar después de conectarnos
+        int count;
+        lock (_lock) count = _client!.GetControllerCount();
+        if (count != _devices.Length) Refresh();
     }
 
     // ---------- Motor de efectos ----------
@@ -227,7 +273,8 @@ public sealed class RgbService : IDisposable
 
         bool animated = Override == null && s.Effect is not ("Estático" or "Apagado");
         _moving = animated || fading;
-        if (!_moving && _staticSent && t - _lastSend < 5) return; // fijo: reenvío cada 5 s por si otra app pisa los colores
+        // Fijo: se reenvía por si otra app pisa los colores (cada segundo en modo prioridad, si no cada 5 s)
+        if (!_moving && _staticSent && t - _lastSend < (Settings.Current.LightingPriority ? 1 : 5)) return;
         _lastSend = t;
 
         // Velocidad exponencial: mucha finura en lo lento (1 % ≈ un ciclo cada 30 s, 100 % ≈ 1,4 por segundo)

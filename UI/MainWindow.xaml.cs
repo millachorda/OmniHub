@@ -147,11 +147,33 @@ public partial class MainWindow : Window
         Close();
     }
 
+    [System.Runtime.InteropServices.DllImport("user32.dll")] static extern bool SetForegroundWindow(IntPtr h);
+    [System.Runtime.InteropServices.DllImport("user32.dll")] static extern bool ShowWindow(IntPtr h, int cmd);
+    [System.Runtime.InteropServices.DllImport("user32.dll")] static extern IntPtr GetForegroundWindow();
+    [System.Runtime.InteropServices.DllImport("user32.dll")] static extern void keybd_event(byte vk, byte scan, uint flags, UIntPtr extra);
+
+    /// <summary>Abrir desde la bandeja: siempre restaurada, al frente, con foco y con la página ya construida.</summary>
     void ShowFromTray()
     {
+        ShowInTaskbar = true;
         Show();
         if (WindowState == WindowState.Minimized) WindowState = WindowState.Normal;
+        var h = new System.Windows.Interop.WindowInteropHelper(this).Handle;
+        ShowWindow(h, 9); // SW_RESTORE
+        // Windows no deja robar el foco a cualquiera: el truco de "siempre encima" un instante lo trae al frente
+        Topmost = true;
         Activate();
+        if (!SetForegroundWindow(h) || GetForegroundWindow() != h)
+        {
+            // Windows bloquea a veces robar el foco: una pulsación de Alt cuenta como permiso del usuario
+            keybd_event(0x12, 0, 0, UIntPtr.Zero);
+            keybd_event(0x12, 0, 2, UIntPtr.Zero);
+            SetForegroundWindow(h);
+        }
+        Topmost = false;
+        Focus();
+        UpdateBackground();
+        if (Page.Content == null && _servicesStarted) Navigate(_current);
     }
 
     void SetupTray()
